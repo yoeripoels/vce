@@ -25,6 +25,18 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def __init__(self):
         super(REPR, self).__init__()
 
+    @property
+    @abstractmethod
+    def _name_loss(self):
+        """A list with the names of each loss (to keep track of metrics)"""
+        pass
+
+    @property
+    @abstractmethod
+    def _name_acc(self):
+        """A list with the names of each accuracy metric"""
+        pass
+
     @abstractmethod
     def set_train_params(self, *args):
         """Sets the training parameters (loss weights, optimizer(s), device)"""
@@ -56,7 +68,33 @@ class REPR(keras.Model, metaclass=ABCMeta):
         pass
 
     '''
-    SHARED TRAINING METHODS / LOSSES HERE, so we don't have to repeat them in implementations.
+    Metric-related methods
+    '''
+    def compile(self, *args, **kwargs):
+        super(REPR, self).compile(*args, **kwargs)
+        self.metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
+        self.metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
+
+    def update_metric(self, update_dict, metric_type='loss', y=None):
+        """Updates the metrics according to the supplied dict. Metric type is either 'loss' or 'acc'"""
+        for name, value in update_dict.items():
+            if metric_type == 'loss':
+                self.metric_loss[name].update_state(value)
+            elif metric_type == 'acc':
+                self.metric_acc[name].update_state(value, y)
+
+    def get_metric(self, loss=None, pred=None, y=None):
+        """Get dict of metric results. If losses (l) or predictions (pred) are supplied, update metrics first"""
+        if loss is not None:
+            self.update_metric(loss, metric_type='loss')
+        if pred is not None and y is not None:
+            self.update_metric(pred, metric_type='acc', y=y)
+        return {name: metric.result() for name, metric in
+                [('loss_' + n, v) for n, v in self.metric_loss.items()] +
+                [('acc_' + n, v) for n, v in self.metric_acc.items()]}
+
+    '''
+    Training-related methods
     '''
     @staticmethod
     def loss_kl(mu, log_sigma):
