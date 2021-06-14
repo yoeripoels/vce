@@ -20,28 +20,21 @@ class DVAE(REPR):
     _name_acc = ['z_y', 'z_x']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, w_rec=1, w_kl_y=1, w_kl_x=1, w_class=1):
+                 optimizer=None, **kwargs):
         super(DVAE, self).__init__()
         self.encoder_y = Encoder(input_shape, dim_y)
         self.encoder_x = Encoder(input_shape, dim_x)
-        self.decoder = Decoder(dim_y + dim_x)
+        self.decoder = Decoder(dim_y + dim_x, output_shape=input_shape)
         self.classifier_y = Classifier(dim_y, num_class, num_dense=0)
         self.classifier_x = Classifier(dim_x, num_class)
 
         optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)
-        self.set_train_params(optimizer=optimizer, w_rec=w_rec, w_kl_y=w_kl_y, w_kl_x=w_kl_x, w_class=w_class)
+        self.set_train_params(optimizer=optimizer, **kwargs)
 
-    def set_train_params(self, optimizer=None, w_rec=None, w_kl_y=None, w_kl_x=None, w_class=None):
+    def set_train_params(self, optimizer=None, **kwargs):
         if optimizer:
             self.optimizer = optimizer
-        if w_rec:
-            self.w_rec = w_rec
-        if w_kl_y:
-            self.w_kl_y = w_kl_y
-        if w_kl_x:
-            self.w_kl_x = w_kl_x
-        if w_class:
-            self.w_class = w_class
+        self.parse_weights(**kwargs)
 
     def compile(self, *args, **kwargs):
         super(DVAE, self).compile(*args, **kwargs)
@@ -64,12 +57,12 @@ class DVAE(REPR):
 
         # compute all losses
         # ELBO
-        l_rec = self.w_rec * self.loss_rec(x, x_rec)
-        l_kl_y = self.w_kl_y * self.loss_kl(mu_y, log_sigma_y)
-        l_kl_x = self.w_kl_x * self.loss_kl(mu_x, log_sigma_x)
+        l_rec = self.w['rec'] * self.loss_rec(x, x_rec)
+        l_kl_y = self.w['kl_y'] * self.loss_kl(mu_y, log_sigma_y)
+        l_kl_x = self.w['kl_x'] * self.loss_kl(mu_x, log_sigma_x)
 
         # Classification / disentanglement losses
-        l_class = self.w_class * (self.loss_classify(class_pred_y, y) + self.loss_classify(class_pred_x, y))
+        l_class = self.w['class'] * (self.loss_classify(class_pred_y, y) + self.loss_classify(class_pred_x, y))
 
         return (l_rec, l_kl_y, l_kl_x, l_class), (x_rec, class_pred_y, class_pred_x)
 

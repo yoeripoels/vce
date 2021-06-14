@@ -38,7 +38,14 @@ def Encoder(input_shape, dim_z):
     return Model(x_in, [z_mean, z_log_sigma], name='encoder')
 
 
-def Decoder(dim_z):
+def Decoder(dim_z, output_shape=None):
+    if output_shape:  # if output shape passed, compute inner dense dim
+        h, w = output_shape[0:2]
+        assert h % 2 == 0 and w % 2 == 0  # as we apply (2,2) strides, we assume even resolution
+        h_in, w_in = h//2, w//2
+    else:
+        h_in, w_in = 16, 16
+
     # input
     z_in = Input(shape=dim_z, name='decoder_input')
 
@@ -46,9 +53,9 @@ def Decoder(dim_z):
     strides = (2, 2)
     strides_small = (1, 1)
     kernel_size = 4
-    l = Dense(16 * 16 * 128, name='4')(z_in)
+    l = Dense(h_in * w_in * 128, name='4')(z_in)
     l = LeakyReLU(l)
-    l = Reshape((16, 16, 128), name='4_b')(l)
+    l = Reshape((h_in, w_in, 128), name='4_b')(l)
     l = BatchNormalization()(l)
     l = Conv2DTranspose(filters=64, kernel_size=kernel_size, strides=strides_small, padding='same', name='3')(l)
     l = LeakyReLU(l)
@@ -99,7 +106,14 @@ def Encoder_CD(input_shape, latent_dim):
     return Model(x_in, [z_mean, z_log_sigma], name='encoder')
 
 
-def Decoder_CD(latent_dim):
+def Decoder_CD(latent_dim, output_shape=None):
+    if output_shape:  # if output shape passed, compute inner dense dim
+        h, w = output_shape[0:2]
+        assert h % 2 == 0 and w % 2 == 0  # as we apply (2,2) strides, we assume even resolution
+        h_in, w_in = h//2, w//2
+    else:
+        h_in, w_in = 16, 16
+
     # input
     z_in = Input(shape=latent_dim, name='decoder_input')
 
@@ -107,9 +121,9 @@ def Decoder_CD(latent_dim):
     strides = (2, 2)
     strides_small = (1, 1)
     kernel_size = 4
-    l = Dense(16 * 16 * 128, name='3')(z_in)
+    l = Dense(h_in * w_in * 128, name='3')(z_in)
     l = LeakyReLU(l)
-    l = Reshape((16, 16, 128), name='3_b')(l)
+    l = Reshape((h_in, w_in, 128), name='3_b')(l)
     l = BatchNormalization()(l)
     l = Conv2DTranspose(filters=32, kernel_size=kernel_size, strides=strides_small, padding='same', name='2')(l)
     l = LeakyReLU(l)

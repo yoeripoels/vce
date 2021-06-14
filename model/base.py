@@ -24,6 +24,7 @@ class REPR(keras.Model, metaclass=ABCMeta):
 
     def __init__(self):
         super(REPR, self).__init__()
+        self.w = {name: 1 for name in self._name_loss}  # initialize loss weights
 
     @property
     @abstractmethod
@@ -71,9 +72,17 @@ class REPR(keras.Model, metaclass=ABCMeta):
     Metric-related methods
     '''
     def compile(self, *args, **kwargs):
+        """On .compile(), set metrics according to loss and accuracy names"""
         super(REPR, self).compile(*args, **kwargs)
         self.metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
         self.metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
+
+    def parse_weights(self, **kwargs):
+        """Set weight values according to loss names"""
+        for name, value in kwargs.items():
+            if name.startswith('w_') and name[2:] in self._name_loss:
+                self.w[name[2:]] = value
+
 
     def update_metric(self, update_dict, metric_type='loss', y=None):
         """Updates the metrics according to the supplied dict. Metric type is either 'loss' or 'acc'"""
