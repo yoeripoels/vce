@@ -25,7 +25,7 @@ class REPR(keras.Model, metaclass=ABCMeta):
 
     def __init__(self):
         super(REPR, self).__init__()
-        self.w = {name: 1 for name in self._name_loss}  # initialize loss weights
+        self.w = {name: 1 for name in self._name_loss + self._name_weight_extra}  # initialize loss weights
 
     @property
     @abstractmethod
@@ -38,6 +38,12 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def _name_acc(self):
         """A list with the names of each accuracy metric"""
         pass
+
+    @property
+    @abstractmethod
+    def _name_weight_extra(self):
+        """A list with the names of extra hyperparameters, that are not loss weights"""
+        return []
 
     @abstractmethod
     def set_train_params(self, *args):
@@ -81,7 +87,7 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def parse_weights(self, **kwargs):
         """Set weight values according to loss names"""
         for name, value in kwargs.items():
-            if name.startswith('w_') and name[2:] in self._name_loss:
+            if name.startswith('w_') and name[2:] in self._name_loss + self._name_weight_extra:
                 self.w[name[2:]] = value
 
     def update_metric(self, update_dict, metric_type='loss', y=None):
@@ -91,6 +97,13 @@ class REPR(keras.Model, metaclass=ABCMeta):
                 self._metric_loss[name].update_state(value)
             elif metric_type == 'acc':
                 self._metric_acc[name].update_state(value, y)
+
+    def update_metric_single(self, name, value, metric_type='loss', y=None):
+        """Updates a single metric. Metric type is either 'loss' or 'acc'"""
+        if metric_type == 'loss':
+            self._metric_loss[name].update_state(value)
+        elif metric_type == 'acc':
+            self._metric_acc[name].update_state(value, y)
 
     def get_metric(self, loss=None, pred=None, y=None):
         """Get dict of metric results. If losses (l) or predictions (pred) are supplied, update metrics first"""

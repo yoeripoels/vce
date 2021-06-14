@@ -20,6 +20,8 @@ Gathering data for one epoch then works as follows:
 Perhaps there's more efficient approaches to do this (e.g., multi-threaded, using built in PyTorch / TensorFlow
 functions), but this works and it's not the most important, so it's not part of the rewrite ;-)
 """
+
+# TODO: Make sure Change Disc y-labels are [1, 0] = False, [0, 1] = True (so one-hot of 0/1, swapped in existing data)
 import numpy as np
 import math
 import glob
