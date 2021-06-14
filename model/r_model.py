@@ -134,7 +134,7 @@ class VAECE(DVAE):
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x, 'disc': self.discriminator})
 
-        optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
+        optimizer_disc = optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
         self.set_train_params(optimizer_disc=optimizer_disc, **kwargs)
 
     def set_cd(self, model_cd):
@@ -149,14 +149,14 @@ class VAECE(DVAE):
         self.parse_weights(**kwargs)
 
     def compile(self, *args, **kwargs):
-        super(DVAE, self).compile(*args, **kwargs)
+        super(VAECE, self).compile(*args, **kwargs)
         self.set_train_params(*args, **kwargs)
 
     def forward_loss(self, batch):
         x_a, x_b, y_a, y_b, x_real = batch
         # regular DVAE loss for both pairs
-        loss_a, data_a = super(DVAE, self).forward_loss((x_a, y_a))
-        loss_b, data_b = super(DVAE, self).forward_loss((x_b, y_b))
+        loss_a, data_a = super(VAECE, self).forward_loss((x_a, y_a))
+        loss_b, data_b = super(VAECE, self).forward_loss((x_b, y_b))
         l_rec, l_kl_y, l_kl_x, l_class = [(l_a + l_b)/2 for l_a, l_b in zip(loss_a, loss_b)]
         z_y, z_x, x_rec, class_pred_y, class_pred_x = [tf.concat([a, b], axis=0) for a, b in zip(data_a, data_b)]
         y = tf.concat([y_a, y_b], axis=0)
@@ -218,7 +218,7 @@ class VAECE(DVAE):
         l = {}
         l_disc = {}
         pred = {}
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(persistent=True) as tape:
             (l['rec'], l['kl_y'], l['kl_x'], l['class'], l['chg_disc'], l['disc_vae'], l_disc['disc']), \
             data_return = self.forward_loss(batch)
             _, _, _, pred['z_y'], pred['z_x'], y, pred_cd, true_cd, pred_d, true_d = data_return

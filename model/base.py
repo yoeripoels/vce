@@ -78,11 +78,13 @@ class REPR(keras.Model, metaclass=ABCMeta):
     '''
     Metric/settings related methods
     '''
-    def compile(self, *args, **kwargs):
+    def compile(self, batch_size=None, *args, **kwargs):
         """On .compile(), set metrics according to loss and accuracy names"""
         super(REPR, self).compile(*args, **kwargs)
         self._metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
         self._metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
+        if batch_size:
+            self.batch_size = batch_size
 
     def parse_weights(self, **kwargs):
         """Set weight values according to loss names"""

@@ -22,6 +22,7 @@ functions), but this works and it's not the most important, so it's not part of 
 """
 
 # TODO: Make sure Change Disc y-labels are [1, 0] = False, [0, 1] = True (so one-hot of 0/1, swapped in existing data)
+# TODO: This is now the case for presaved data --> for code creating this data, ensure this!
 import numpy as np
 import math
 import glob
