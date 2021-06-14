@@ -8,6 +8,7 @@ from abc import abstractmethod, ABCMeta
 from tensorflow import keras
 import tensorflow as tf
 import tensorflow.keras.backend as K
+import pickle
 
 
 class REPR(keras.Model, metaclass=ABCMeta):
@@ -69,13 +70,13 @@ class REPR(keras.Model, metaclass=ABCMeta):
         pass
 
     '''
-    Metric-related methods
+    Metric/settings related methods
     '''
     def compile(self, *args, **kwargs):
         """On .compile(), set metrics according to loss and accuracy names"""
         super(REPR, self).compile(*args, **kwargs)
-        self.metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
-        self.metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
+        self._metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
+        self._metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
 
     def parse_weights(self, **kwargs):
         """Set weight values according to loss names"""
@@ -83,14 +84,13 @@ class REPR(keras.Model, metaclass=ABCMeta):
             if name.startswith('w_') and name[2:] in self._name_loss:
                 self.w[name[2:]] = value
 
-
     def update_metric(self, update_dict, metric_type='loss', y=None):
         """Updates the metrics according to the supplied dict. Metric type is either 'loss' or 'acc'"""
         for name, value in update_dict.items():
             if metric_type == 'loss':
-                self.metric_loss[name].update_state(value)
+                self._metric_loss[name].update_state(value)
             elif metric_type == 'acc':
-                self.metric_acc[name].update_state(value, y)
+                self._metric_acc[name].update_state(value, y)
 
     def get_metric(self, loss=None, pred=None, y=None):
         """Get dict of metric results. If losses (l) or predictions (pred) are supplied, update metrics first"""
@@ -99,8 +99,45 @@ class REPR(keras.Model, metaclass=ABCMeta):
         if pred is not None and y is not None:
             self.update_metric(pred, metric_type='acc', y=y)
         return {name: metric.result() for name, metric in
-                [('loss_' + n, v) for n, v in self.metric_loss.items()] +
-                [('acc_' + n, v) for n, v in self.metric_acc.items()]}
+                [('loss_' + n, v) for n, v in self._metric_loss.items()] +
+                [('acc_' + n, v) for n, v in self._metric_acc.items()]}
+
+    def set_save_info(self, args=None, models=None):
+        """Sets the (init) arguments and models that are saved/loaded
+        Should be called in init()"""
+        if args:
+            self._save_args = args
+        if models:
+            self._save_models = models
+
+    def save(self, save_name):
+        """Save model weights, hyperparameters and arguments to disk"""
+        for name, model in self._save_models.items():
+            model.save_weights(save_name + '-' + name + '.h5')
+        with open(save_name + '-settings.pkl', 'wb') as f:
+            pickle.dump(self._save_args, f)
+        with open(save_name + '-hyperparams.pkl', 'wb') as f:
+            pickle.dump(self.w, f)
+
+    def load(self, load_name):
+        """Load model weights and hyperparameters from disk"""
+        for name, model in self._save_models.items():
+            model.load_weights(load_name + '-' + name + '.h5')
+        with open(load_name + '-settings.pkl', 'rb') as f:
+            args = pickle.load(f)
+            assert self._save_args == args  # these should not deviate
+        with open(load_name + '-hyperparams.pkl', 'rb') as f:
+            w = pickle.load(f)
+            self.w = w
+
+    @classmethod
+    def from_disk(cls, load_name):
+        """Create model from existing model/configuration from disk"""
+        with open(load_name + '-settings.pkl', 'rb') as f:
+            args = pickle.load(f)
+        model = cls(**args)
+        model.load(load_name)
+        return model
 
     '''
     Training-related methods

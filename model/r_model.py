@@ -28,6 +28,10 @@ class DVAE(REPR):
         self.classifier_y = Classifier(dim_y, num_class, num_dense=0)
         self.classifier_x = Classifier(dim_x, num_class)
 
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class},
+                           models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
+                           'class_y': self.classifier_y, 'class_x': self.classifier_x})
+
         optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)
         self.set_train_params(optimizer=optimizer, **kwargs)
 

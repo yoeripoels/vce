@@ -8,4 +8,7 @@ if __name__ == '__main__':
     dvae.compile()
 
     generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'), ['x', 'y'])
-    dvae.fit(generator, epochs=15, steps_per_epoch=spe)
+    dvae.fit(generator, epochs=1, steps_per_epoch=10)
+    dvae.save('test')
+    new_m = DVAE.from_disk('test')
+    print(new_m)
