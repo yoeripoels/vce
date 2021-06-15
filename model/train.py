@@ -34,3 +34,12 @@ if __name__ == '__main__':
         vaece.fit(generator, epochs=1, steps_per_epoch=10)
         vaece.save('vaece-test')
         new_m = VAECE.from_disk('vaece-test')
+    elif args.type == 'adagvae':
+        generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'),
+                                            ['x_pos_pair_a', 'x_pos_pair_b', 'x', 'y'])
+    elif args.type == 'gvae':
+        generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'),
+                                            ['x_fpair_a', 'x_fpair_b', 'y_fpair', 'x', 'y'])
+    elif args.type == 'lvae':
+        generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'),
+                                            ['x', 'y'] + ['y_f{}'.format(i) for i in range(8)])
