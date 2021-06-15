@@ -13,8 +13,17 @@ class DVAE(REPR):
     """Disentangled VAE, using class labels.
     Splits latent space into z_y and z_x, where the former contains class-related information, and the latter
     contains the remaining information.
-
     Disentanglement is encouraged using auxiliary classifiers on both latent spaces.
+
+    This class-based disentanglement method is based on label-based disentanglement methods, e.g.:
+    "R. Cai, Z. Li, P. Wei, J. Qiao, K. Zhang, and Z. Hao. Learning disentangled semantic representation for domain
+    adaptation." - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6759585/
+    "Z. Ding, Y. Xu, W. Xu, G. Parmar, Y. Yang, M. Welling, and Z. Tu. Guided variational autoencoder for
+    disentanglement learning." - https://arxiv.org/abs/2004.01255
+    "M. Ilse, J. M. Tomczak, C. Louizos, and M. Welling. Diva: Domain invariant variational autoencoders" -
+    https://proceedings.mlr.press/v121/ilse20a/ilse20a.pdf
+    "Z. Zheng and L. Sun. Disentangling latent space for VAE by label relevant/irrelevant dimensions." -
+    https://arxiv.org/abs/1812.09502
     """
 
     _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
@@ -116,10 +125,10 @@ class DVAE(REPR):
 
 
 class VAECE(DVAE):
-    """Model for VAE-based Contrastive Explanation. Built upon DVAE.
-    Uses a disentangled z_y (class) and z_x (remaining).
-    z_y's dimensions are individually disentangled using an auxiliary change-discriminator.
-    Further regularized using discriminator on reconstruction (as in GANs)
+    """Model for VAE-based Contrastive Explanation. Built upon DIVA.
+    z_y's dimensions are individually disentangled using an auxiliary change-discriminator, which acts upon
+    samples generated that different in a single z_y dimension.
+    Further regularized using discriminator (as in GANs) on these reconstructions.
     """
 
     _name_loss = ['rec', 'kl_y', 'kl_x', 'class', 'chg_disc', 'disc_vae', 'disc']
@@ -259,6 +268,111 @@ class VAECE(DVAE):
         self.update_metric_single('chg_disc', pred_cd, y=true_cd, metric_type='acc')
         self.update_metric_single('disc', pred_d, y=true_d, metric_type='acc')
 
+        return self.get_metric()
+
+
+class GVAE(DVAE):
+    """Disentangle individual dimensions in z_y by merging them. Built upon DVAE.
+    To train we show image pairs with one prespecified feature matching, and merge these dimensions
+    in the reconstruction.
+
+    This disentanglement concept is based on that of GVAE:
+    "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents"
+    https://www.ijcai.org/Proceedings/2019/0348.pdf
+    """
+
+    _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
+    _name_acc = ['z_y', 'z_x']
+
+    def __init__(self, input_shape, dim_y, dim_x, num_class=10,
+                 optimizer=None, **kwargs):
+        super(GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+
+    def compile(self, *args, **kwargs):
+        super(GVAE, self).compile(*args, **kwargs)
+        self.set_train_params(*args, **kwargs)
+
+    def forward_loss(self, batch):
+        x_p_a, x_p_b, y_p, x, y = batch
+        return
+
+    def train_step(self, batch):
+        return self.get_metric()
+
+    def test_step(self, batch):
+        return self.get_metric()
+
+class LVAE(DVAE):
+    """Disentangle individual dimensions in z_y with auxiliary dimension-value classifiers. Built upon DVAE.
+    To train we supply images alongside a label for each feature. z_y is optimized to accurately predict these
+    labels from the corresponding z_y dimension, while not being able to predict it from other dimensions.
+
+    This disentanglement concept is based on that of label-based disentanglement methods (as referred to in DVAE),
+    being a multi-dimensional extension thereof.
+    """
+
+    _name_loss = ['rec', 'kl_y', 'kl_x', 'class', 'class_l']
+    _name_acc = ['z_y', 'z_x', 'l', 'l_ad']
+
+    def __init__(self, input_shape, dim_y, dim_x, num_class=10, num_label=8,
+                 optimizer=None, **kwargs):
+        super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+        self.num_label = num_label
+        self.classifier_l = [Classifier(1, 2, num_dense=0) for i in range(num_label)]
+        self.classifier_l_aux = [Classifier(dim_y-1, 2) for i in range(num_label)]
+
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
+                                 'num_label': num_label},
+                           models={**{'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
+                                      'class_y': self.classifier_y, 'class_x': self.classifier_x},
+                                   **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
+                                   **{'class_l_aux_' + str(i): self.classifier_l_aux[i] for i in range(num_label)}})
+
+    def compile(self, *args, **kwargs):
+        super(LVAE, self).compile(*args, **kwargs)
+        self.set_train_params(*args, **kwargs)
+
+    def forward_loss(self, batch):
+        x, y = batch[0:2]
+        dim_label_y = batch[2:]
+        return
+
+    def train_step(self, batch):
+        return self.get_metric()
+
+    def test_step(self, batch):
+        return self.get_metric()
+
+
+class ADA_GVAE(DVAE):
+    """Disentangle individual dimensions in z_y by heuristically identifying the differing dimension, and merging them
+    in reconstruction. Built upon DVAE.
+    To train we supply pairs of images with 1 difference (as in VAECE's change discriminator).
+
+    This disentanglement concept is based on that of ADA-GVAE (being a 1-dimension differing version thereof):
+    "F. Locatello, B. Poole, G. Rätsch, B. Schölkopf, O. Bachem, and M. Tschannen. Weakly supervised
+    disentanglement without compromises." - https://proceedings.mlr.press/v119/locatello20a/locatello20a.pdf
+    """
+
+    _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
+    _name_acc = ['z_y', 'z_x']
+
+    def __init__(self, input_shape, dim_y, dim_x, num_class=10,
+                 optimizer=None, **kwargs):
+        super(ADA_GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+
+    def compile(self, *args, **kwargs):
+        super(ADA_GVAE, self).compile(*args, **kwargs)
+        self.set_train_params(*args, **kwargs)
+
+    def forward_loss(self, batch):
+        x_p_a, x_p_b, x, y = batch
+        return
+
+    def train_step(self, batch):
+        return self.get_metric()
+
+    def test_step(self, batch):
         return self.get_metric()
 
 
