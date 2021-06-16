@@ -89,8 +89,12 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def parse_weights(self, **kwargs):
         """Set weight values according to loss names"""
         for name, value in kwargs.items():
-            if name.startswith('w_') and name[2:] in self._name_loss + self._name_weight_extra:
-                self.w[name[2:]] = value
+            if name.startswith('w_'):
+                w_name = name[2:]
+                if w_name in self._name_loss + self._name_weight_extra:
+                    self.w[w_name] = value
+                else:
+                    print('WARNING: Supplied weight ({}: {}) for loss that does not exist!'.format(name, value))
 
     def update_metric(self, update_dict, metric_type='loss', y=None):
         """Updates the metrics according to the supplied dict. Metric type is either 'loss' or 'acc'"""

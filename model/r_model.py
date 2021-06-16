@@ -2,6 +2,7 @@
 """
 from model.base import REPR
 import tensorflow as tf
+import tensorflow_probability as tfp
 from tensorflow import keras
 from util.model import grad_reverse
 from model.component import Encoder, Decoder, Classifier, Discriminator
@@ -92,7 +93,7 @@ class DVAE(REPR):
         # classification / disentanglement losses
         l_class = self.w['class'] * (self.loss_classify(class_pred_y, y) + self.loss_classify(class_pred_x, y))
 
-        return (l_rec, l_kl_y, l_kl_x, l_class), (z_y, z_x, x_rec, class_pred_y, class_pred_x)
+        return (l_rec, l_kl_y, l_kl_x, l_class), (z_y, z_x, x_rec, class_pred_y, class_pred_x, y)
 
     def train_step(self, batch):
         l = {}
@@ -100,7 +101,7 @@ class DVAE(REPR):
         with tf.GradientTape() as tape:
             dvae_loss, dvae_data = self.forward_loss(batch)
             l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
-            _, _, _, pred['z_y'], pred['z_x'] = dvae_data
+            _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
 
             loss = sum(l.values())
         train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
@@ -108,14 +109,14 @@ class DVAE(REPR):
                            *self.classifier_x.trainable_variables]
         gradients = tape.gradient(loss, train_variables)
         self.optimizer.apply_gradients(zip(gradients, train_variables))
-        return self.get_metric(loss=l, pred=pred, y=batch[1])
+        return self.get_metric(loss=l, pred=pred, y=y)
 
     def test_step(self, batch):
         l, pred = {}, {}
         dvae_loss, dvae_data = self.forward_loss(batch)
         l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
-        _, _, _, pred['z_y'], pred['z_x'] = dvae_data
-        return self.get_metric(loss=l, pred=pred, y=batch[1])
+        _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
+        return self.get_metric(loss=l, pred=pred, y=y)
 
     def encode_y(self, x):
         mu_y, _ = self.encoder_y(x)
@@ -155,9 +156,8 @@ class VAECE(DVAE):
         # note that we must manually set the CD after loading a model from disc, as it is not part of the model
         self.change_discriminator = model_cd
 
-    def set_train_params(self, optimizer=None, optimizer_disc=None, **kwargs):
-        if optimizer:
-            self.optimizer = optimizer
+    def set_train_params(self, optimizer_disc=None, **kwargs):
+        super(VAECE, self).set_train_params(**kwargs)
         if optimizer_disc:
             self.optimizer_disc = optimizer_disc
         self.parse_weights(**kwargs)
@@ -172,9 +172,8 @@ class VAECE(DVAE):
         dvae_loss_a, dvae_data_a = super(VAECE, self).forward_loss((x_a, y_a))
         dvae_loss_b, dvae_data_b = super(VAECE, self).forward_loss((x_b, y_b))
         l_rec, l_kl_y, l_kl_x, l_class = [(l_a + l_b)/2 for l_a, l_b in zip(dvae_loss_a, dvae_loss_b)]
-        z_y, z_x, x_rec, class_pred_y, class_pred_x = [tf.concat([a, b], axis=0) for a, b in
+        z_y, z_x, x_rec, class_pred_y, class_pred_x, y = [tf.concat([a, b], axis=0) for a, b in
                                                        zip(dvae_data_a, dvae_data_b)]
-        y = tf.concat([y_a, y_b], axis=0)
 
         ### pair-based dimension conditioning ###
         ## swap pair, get change discriminator loss ##
@@ -277,37 +276,6 @@ class VAECE(DVAE):
         return self.get_metric()
 
 
-class GVAE(DVAE):
-    """Disentangle individual dimensions in z_y by merging them. Built upon DVAE.
-    To train we show image pairs with one prespecified feature matching, and merge these dimensions
-    in the reconstruction.
-
-    This disentanglement concept is based on that of GVAE:
-    "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents." -
-    https://www.ijcai.org/Proceedings/2019/0348.pdf
-    """
-
-    _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
-    _name_acc = ['z_y', 'z_x']
-
-    def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, **kwargs):
-        super(GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
-
-    def compile(self, *args, **kwargs):
-        super(GVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
-
-    def forward_loss(self, batch):
-        x_p_a, x_p_b, y_p, x, y = batch
-        return
-
-    def train_step(self, batch):
-        return self.get_metric()
-
-    def test_step(self, batch):
-        return self.get_metric()
-
 class LVAE(DVAE):
     """Disentangle individual dimensions in z_y with auxiliary dimension-value classifiers. Built upon DVAE.
     To train we supply images alongside a label for each feature. z_y is optimized to accurately predict these
@@ -367,6 +335,7 @@ class LVAE(DVAE):
         l_rec, l_kl_y, l_kl_x, l_class = dvae_loss
         z_y, z_x, x_rec, class_pred_y, class_pred_x = dvae_data
 
+        # LABEL LOSS #
         l_label = 0
         pred_label = []
         pred_label_adv = []
@@ -425,36 +394,154 @@ class LVAE(DVAE):
         return self.get_metric()
 
 
-class ADA_GVAE(DVAE):
+class GVAE(DVAE):
+    """Disentangle individual dimensions in z_y by merging them. Built upon DVAE.
+    To train we show image pairs with one prespecified feature matching, and merge these dimensions
+    in the reconstruction.
+
+    This disentanglement concept is based on that of GVAE:
+    "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents." -
+    https://www.ijcai.org/Proceedings/2019/0348.pdf
+
+    (note that ADA-GVAE implemention is also in this class, its implementation is a mere wrapper around GVAE)
+    """
+
+    _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
+    _name_weight_extra = ['full']
+    _name_acc = ['z_y', 'z_x']
+
+    def __init__(self, input_shape, dim_y, dim_x, num_class=10,
+                 optimizer=None, adaptive=False, **kwargs):
+        super(GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+        self.adaptive = adaptive
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
+                                 'adaptive': adaptive})
+
+    def compile(self, *args, **kwargs):
+        super(GVAE, self).compile(*args, **kwargs)
+        self.set_train_params(*args, **kwargs)
+
+    def set_train_params(self, batch_size=None, *args, **kwargs):
+        super(GVAE, self).set_train_params(**kwargs)
+        if batch_size:
+            self.batch_size = batch_size
+            indices = tf.constant([range(self.batch_size)], dtype='int32')
+            self.indices = tf.reshape(indices, (self.batch_size, 1))
+
+    def merge_dim(self, mu_a, log_sigma_a, mu_b, log_sigma_b, dim_idx):
+        """Average a single dimension of a and b, as specified by dim_idx"""
+        # construct [1, 1, 0.5] array so we can easily merge two z-spaces
+        merge = tf.cast(dim_idx, dtype='int32')
+        update_indices = tf.concat([self.indices, merge], axis=-1)  # format indices for scatter_nd_update
+
+        # construct [1, 1, 0.5] array so we can easily merge two z-spaces
+        ones = tf.ones_like(mu_a)
+        update = tf.ones(self.batch_size) * 0.5
+        dif = tf.tensor_scatter_nd_update(ones, update_indices, update)
+
+        # merge two samples we propagate, i.e, a = a * [1, 1, 0.5, 1] + b * [0, 0, 0.5, 0] and vice versa
+        mu_a_new = mu_a * dif + mu_b * (1 - dif)
+        log_sigma_a_new = log_sigma_a * dif + log_sigma_b * (1 - dif)
+        mu_b_new = mu_b * dif + mu_a * (1 - dif)
+        log_sigma_b_new = log_sigma_b * dif + log_sigma_a * (1 - dif)
+
+        return mu_a_new, log_sigma_a_new, mu_b_new, log_sigma_b_new
+
+    def merge_heuristically(self, mu_a, log_sigma_a, mu_b, log_sigma_b):
+        """Average all but one dimensions of a and b. This remaining dimension is picked heuristically, as the
+        dimension with the largets KL-divergence"""
+        # create normal distr and take kl divergences
+        distr_a = tfp.distributions.Normal(loc=mu_a, scale=tf.math.exp(log_sigma_a))
+        distr_b = tfp.distributions.Normal(loc=mu_b, scale=tf.math.exp(log_sigma_b))
+        kl = distr_a.kl_divergence(distr_b)
+
+        # get indices of max kl-div, merge remaining
+        merge = tf.math.argmax(kl, axis=-1)
+        merge = tf.reshape(merge, (self.batch_size, 1))
+        merge = tf.cast(merge, dtype='int32')
+        update_indices = tf.concat([self.indices, merge], axis=-1)
+
+        # construct [0.5, 0.5, 1] array so we can easily merge two z-spaces
+        ones = tf.ones_like(mu_a) * 0.5
+        update = tf.ones((self.batch_size))
+        dif = tf.tensor_scatter_nd_update(ones, update_indices, update)
+
+        # merge two samples we propagate, i.e, a = a * [1, 0.5, 0.5, 0.5] + b * [0, 0.5, 0.5, 0.5] and vice versa
+        mu_a_new = mu_a * dif + mu_b * (1 - dif)
+        log_sigma_a_new = log_sigma_a * dif + log_sigma_b * (1 - dif)
+        mu_b_new = mu_b * dif + mu_a * (1 - dif)
+        log_sigma_b_new = log_sigma_b * dif + log_sigma_a * (1 - dif)
+
+        return mu_a_new, log_sigma_a_new, mu_b_new, log_sigma_b_new
+
+    def forward_loss(self, batch):
+        if self.adaptive:
+            x_p_a, x_p_b, x, y = batch
+        else:
+            x_p_a, x_p_b, y_p, x, y = batch
+
+        # regular DVAE loss
+        dvae_loss, dvae_data = super(GVAE, self).forward_loss((x, y))
+        l_rec, l_kl_y, l_kl_x = [self.w['full'] * l for l in dvae_loss[0:3]]  # ELBO losses are scaled
+        l_class = dvae_loss[3]
+
+        z_y, z_x, x_rec, class_pred_y, class_pred_x, y = dvae_data
+
+        # AVERAGE THE SUPPLIED SHARED LATENT DIM AND COMPUTE ELBO (GROUP VAE) #
+
+        # infer like normal
+        mu_y_a, log_sigma_y_a = self.encoder_y(x_p_a)
+        mu_y_b, log_sigma_y_b = self.encoder_y(x_p_b)
+
+        # merge the group's values
+        if self.adaptive:
+            mu_y_a, log_sigma_y_a, mu_y_b, log_sigma_y_b = \
+                self.merge_heuristically(mu_y_a, log_sigma_y_a, mu_y_b, log_sigma_y_b)
+        else:
+            mu_y_a, log_sigma_y_a, mu_y_b, log_sigma_y_b = \
+                self.merge_dim(mu_y_a, log_sigma_y_a, mu_y_b, log_sigma_y_b, y_p)
+
+        # infer z_xs
+        mu_x_a, log_sigma_x_a = self.encoder_x(x_p_a)
+        mu_x_b, log_sigma_x_b = self.encoder_x(x_p_b)
+
+        # sample all
+        z_y_a = self.sample(mu_y_a, log_sigma_y_a)
+        z_x_a = self.sample(mu_x_a, log_sigma_x_a)
+
+        z_y_b = self.sample(mu_y_b, log_sigma_y_b)
+        z_x_b = self.sample(mu_x_b, log_sigma_x_b)
+
+        # reconstruct both
+        x_rec_a = self.decoder(tf.concat([z_y_a, z_x_a], axis=1))
+        x_rec_b = self.decoder(tf.concat([z_y_b, z_x_b], axis=1))
+
+        # compute losses
+        l_rec += self.w['rec'] * (self.loss_rec(x_p_a, x_rec_a) + self.loss_rec(x_p_b, x_rec_b))
+        l_kl_y += self.w['kl_y'] * (self.loss_kl(mu_y_a, log_sigma_y_a) + self.loss_kl(mu_y_b, log_sigma_y_b))
+        l_kl_x += self.w['kl_x'] * (self.loss_kl(mu_x_a, log_sigma_x_a) + self.loss_kl(mu_x_b, log_sigma_x_b))
+        return (l_rec, l_kl_y, l_kl_x, l_class), (z_y, z_x, x_rec, class_pred_y, class_pred_x, y)
+
+    """
+    Train and test are identical to DVAE    
+    """
+
+
+class ADA_GVAE(GVAE):
     """Disentangle individual dimensions in z_y by heuristically identifying the differing dimension, and merging them
-    in reconstruction. Built upon DVAE.
+    in reconstruction. Built upon GVAE.
     To train we supply pairs of images with 1 difference (as in VAECE's change discriminator).
 
     This disentanglement concept is based on that of ADA-GVAE (being a 1-dimension differing version thereof):
     "F. Locatello, B. Poole, G. Rätsch, B. Schölkopf, O. Bachem, and M. Tschannen. Weakly supervised
     disentanglement without compromises." - https://proceedings.mlr.press/v119/locatello20a/locatello20a.pdf
     """
-
-    _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
-    _name_acc = ['z_y', 'z_x']
-
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
                  optimizer=None, **kwargs):
-        super(ADA_GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
-
-    def compile(self, *args, **kwargs):
-        super(ADA_GVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
-
-    def forward_loss(self, batch):
-        x_p_a, x_p_b, x, y = batch
-        return
-
-    def train_step(self, batch):
-        return self.get_metric()
-
-    def test_step(self, batch):
-        return self.get_metric()
+        if 'adaptive' in kwargs:  # if supplied, make sure we don't pass it along twice
+            assert kwargs['adaptive'] is True
+            del kwargs['adaptive']
+        super(ADA_GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer=optimizer, adaptive=True, **kwargs)
 
 
 if __name__ == '__main__':

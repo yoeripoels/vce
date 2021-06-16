@@ -18,7 +18,7 @@ if __name__ == '__main__':
         dvae.save(os.path.join(save_dir, 'dvae-test'))
         new_m = DVAE.from_disk(os.path.join(save_dir, 'dvae-test'))
     elif args.type == 'cd':
-        cd_dvae = CD_DVAE(input_shape=(32, 32, 1), dim_y=16, dim_x=16, w_kl_x=0.5, w_class=16, w_disc=50)
+        cd_dvae = CD_DVAE(input_shape=(32, 32, 1), dim_y=16, dim_x=16, w_kl_x=0.5, w_class=16, w_chg_disc=50)
         cd_dvae.compile()
         generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'),
                                             ['x_pair_full_a', 'x_pair_full_b', 'y_pair', 'x', 'y'])
