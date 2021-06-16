@@ -98,7 +98,10 @@ class DVAE(REPR):
         l = {}
         pred = {}
         with tf.GradientTape() as tape:
-            (l['rec'], l['kl_y'], l['kl_x'], l['class']), (_, _, _, pred['z_y'], pred['z_x']) = self.forward_loss(batch)
+            dvae_loss, dvae_data = self.forward_loss(batch)
+            l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
+            _, _, _, pred['z_y'], pred['z_x'] = dvae_data
+
             loss = sum(l.values())
         train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
                            *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
@@ -109,7 +112,9 @@ class DVAE(REPR):
 
     def test_step(self, batch):
         l, pred = {}, {}
-        (l['rec'], l['kl_y'], l['kl_x'], l['class']), (_, _, _, pred['z_y'], pred['z_x']) = self.forward_loss(batch)
+        dvae_loss, dvae_data = self.forward_loss(batch)
+        l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
+        _, _, _, pred['z_y'], pred['z_x'] = dvae_data
         return self.get_metric(loss=l, pred=pred, y=batch[1])
 
     def encode_y(self, x):
@@ -164,18 +169,19 @@ class VAECE(DVAE):
     def forward_loss(self, batch):
         x_a, x_b, y_a, y_b, x_real = batch
         # regular DVAE loss for both pairs
-        loss_a, data_a = super(VAECE, self).forward_loss((x_a, y_a))
-        loss_b, data_b = super(VAECE, self).forward_loss((x_b, y_b))
-        l_rec, l_kl_y, l_kl_x, l_class = [(l_a + l_b)/2 for l_a, l_b in zip(loss_a, loss_b)]
-        z_y, z_x, x_rec, class_pred_y, class_pred_x = [tf.concat([a, b], axis=0) for a, b in zip(data_a, data_b)]
+        dvae_loss_a, dvae_data_a = super(VAECE, self).forward_loss((x_a, y_a))
+        dvae_loss_b, dvae_data_b = super(VAECE, self).forward_loss((x_b, y_b))
+        l_rec, l_kl_y, l_kl_x, l_class = [(l_a + l_b)/2 for l_a, l_b in zip(dvae_loss_a, dvae_loss_b)]
+        z_y, z_x, x_rec, class_pred_y, class_pred_x = [tf.concat([a, b], axis=0) for a, b in
+                                                       zip(dvae_data_a, dvae_data_b)]
         y = tf.concat([y_a, y_b], axis=0)
 
         ### pair-based dimension conditioning ###
         ## swap pair, get change discriminator loss ##
         # latent states we use
-        z_y_a = data_a[0]
-        z_x_a = data_a[1]
-        z_y_b = data_b[0]
+        z_y_a = dvae_data_a[0]
+        z_x_a = dvae_data_a[1]
+        z_y_b = dvae_data_b[0]
 
         # create interpolation configuration
         random_interp = tf.random.uniform((self.batch_size, self._dim_y), minval=0, maxval=2, dtype='int32')
@@ -228,9 +234,9 @@ class VAECE(DVAE):
         l_disc = {}
         pred = {}
         with tf.GradientTape(persistent=True) as tape:
-            (l['rec'], l['kl_y'], l['kl_x'], l['class'], l['chg_disc'], l['disc_vae'], l_disc['disc']), \
-            data_return = self.forward_loss(batch)
-            _, _, _, pred['z_y'], pred['z_x'], y, pred_cd, true_cd, pred_d, true_d = data_return
+            vaece_loss, vaece_data = self.forward_loss(batch)
+            l['rec'], l['kl_y'], l['kl_x'], l['class'], l['chg_disc'], l['disc_vae'], l_disc['disc'] = vaece_loss
+            _, _, _, pred['z_y'], pred['z_x'], y, pred_cd, true_cd, pred_d, true_d = vaece_data
             loss = sum(l.values())
             loss_disc = sum(l_disc.values())
 
@@ -258,9 +264,9 @@ class VAECE(DVAE):
         l = {}
         l_disc = {}
         pred = {}
-        (l['rec'], l['kl_y'], l['kl_x'], l['class'], l['chg_disc'], l['disc_vae'], l_disc['disc']), \
-        data_return = self.forward_loss(batch)
-        _, _, _, pred['z_y'], pred['z_x'], y, pred_cd, true_cd, pred_d, true_d = data_return
+        vaece_loss, vaece_data = self.forward_loss(batch)
+        l['rec'], l['kl_y'], l['kl_x'], l['class'], l['chg_disc'], l['disc_vae'], l_disc['disc'] = vaece_loss
+        _, _, _, pred['z_y'], pred['z_x'], y, pred_cd, true_cd, pred_d, true_d = vaece_data
 
         # update metrics
         self.update_metric({**l, **l_disc}, metric_type='loss')
@@ -277,7 +283,7 @@ class GVAE(DVAE):
     in the reconstruction.
 
     This disentanglement concept is based on that of GVAE:
-    "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents"
+    "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents." -
     https://www.ijcai.org/Proceedings/2019/0348.pdf
     """
 
@@ -311,36 +317,111 @@ class LVAE(DVAE):
     being a multi-dimensional extension thereof.
     """
 
-    _name_loss = ['rec', 'kl_y', 'kl_x', 'class', 'class_l']
-    _name_acc = ['z_y', 'z_x', 'l', 'l_ad']
+    _name_loss = ['rec', 'kl_y', 'kl_x', 'class', 'label']
+    _name_acc = ['z_y', 'z_x', 'l', 'l_adv']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10, num_label=8,
                  optimizer=None, **kwargs):
         super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
         self.num_label = num_label
         self.classifier_l = [Classifier(1, 2, num_dense=0) for i in range(num_label)]
-        self.classifier_l_aux = [Classifier(dim_y-1, 2) for i in range(num_label)]
+        self.classifier_l_adv = [Classifier(dim_y - 1, 2) for i in range(num_label)]
 
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
                                  'num_label': num_label},
                            models={**{'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                       'class_y': self.classifier_y, 'class_x': self.classifier_x},
                                    **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
-                                   **{'class_l_aux_' + str(i): self.classifier_l_aux[i] for i in range(num_label)}})
+                                   **{'class_l_aux_' + str(i): self.classifier_l_adv[i] for i in range(num_label)}})
+
+        # initialize variables to easily get the complement dimensions during training
+        self.complement = []
+        for i in range(self.num_label):
+            opposite = list(range(self.num_label))
+            opposite.remove(i)
+            opposite = tf.constant(opposite)
+            self.complement.append(opposite)
 
     def compile(self, *args, **kwargs):
         super(LVAE, self).compile(*args, **kwargs)
         self.set_train_params(*args, **kwargs)
 
+    def label_loss(self, i, dim_label_y, z_y, complement=False):
+        if complement:
+            samples_gr = grad_reverse(z_y)  # reverse gradient
+            dim = tf.gather(samples_gr, self.complement[i], axis=-1)  # get complement dims
+            dim = tf.reshape(dim, (self.batch_size, self.num_label - 1))
+            predictions = self.classifier_l_adv[i](dim)
+        else:
+            dim = tf.gather(z_y, i, axis=-1)  # get correct dim
+            dim = tf.reshape(dim, (self.batch_size, 1))
+            predictions = self.classifier_l[i](dim)
+        l_label = self.w['label'] * self.loss_classify(predictions, dim_label_y[i])
+        return l_label, predictions
+
     def forward_loss(self, batch):
         x, y = batch[0:2]
         dim_label_y = batch[2:]
-        return
+
+        dvae_loss, dvae_data = super(LVAE, self).forward_loss((x, y))
+        l_rec, l_kl_y, l_kl_x, l_class = dvae_loss
+        z_y, z_x, x_rec, class_pred_y, class_pred_x = dvae_data
+
+        l_label = 0
+        pred_label = []
+        pred_label_adv = []
+        for i in range(self.num_label):
+            l_label_i, pred_i = self.label_loss(i, dim_label_y, z_y)
+            l_label += l_label_i
+            pred_label.append(pred_i)
+            l_label_adv_i, pred_adv_i = self.label_loss(i, dim_label_y, z_y, complement=True)
+            l_label += l_label_adv_i
+            pred_label_adv.append(pred_adv_i)
+        true_label = tf.concat(dim_label_y, axis=0)
+        pred_label = tf.concat(pred_label, axis=0)
+        pred_label_adv = tf.concat(pred_label_adv, axis=0)
+
+        return (l_rec, l_kl_y, l_kl_x, l_class, l_label), \
+               (z_y, z_x, x_rec, class_pred_y, class_pred_x, true_label, pred_label, pred_label_adv)
 
     def train_step(self, batch):
+        l = {}
+        pred = {}
+        pred_l = {}
+        with tf.GradientTape(persistent=True) as tape:
+            lvae_loss, lvae_data = self.forward_loss(batch)
+            l['rec'], l['kl_y'], l['kl_x'], l['class'], l['label'] = lvae_loss
+            _, _, _, pred['z_y'], pred['z_x'], y_label, pred_l['l'], pred_l['l_adv'] = lvae_data
+            y_class = batch[1]
+            loss = sum(l.values())
+        # train main representation model
+        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
+                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
+                           *self.classifier_x.trainable_variables]
+        for m in self.classifier_l + self.classifier_l_adv:
+            train_variables.extend(m.trainable_variables)
+        gradients = tape.gradient(loss, train_variables)
+        self.optimizer.apply_gradients(zip(gradients, train_variables))
+
+        # update metrics
+        self.update_metric(l, metric_type='loss')
+        self.update_metric(pred, y=y_class, metric_type='acc')
+        self.update_metric(pred_l, y=y_label, metric_type='acc')
         return self.get_metric()
 
     def test_step(self, batch):
+        l = {}
+        pred = {}
+        pred_l = {}
+        lvae_loss, lvae_data = self.forward_loss(batch)
+        l['rec'], l['kl_y'], l['kl_x'], l['class'], l['label'] = lvae_loss
+        _, _, _, pred['z_y'], pred['z_x'], y_label, pred_l['l'], pred_l['l_adv'] = lvae_data
+        y_class = batch[1]
+
+        # update metrics
+        self.update_metric(l, metric_type='loss')
+        self.update_metric(pred, y=y_class, metric_type='acc')
+        self.update_metric(pred_l, y=y_label, metric_type='acc')
         return self.get_metric()
 
 

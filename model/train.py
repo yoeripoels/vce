@@ -43,7 +43,7 @@ if __name__ == '__main__':
         gvae.save(os.path.join(save_dir, 'gvae-test'))
         new_m = GVAE.from_disk(os.path.join(save_dir, 'gvae-test'))
     elif args.type == 'lvae':
-        lvae = LVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=7, w_class_l=20)
+        lvae = LVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=7, w_label=20)
         lvae.compile(batch_size=128)
         generator, spe = data.get_data_disk(os.path.join('..', 'data', 'synthetic', 'out'),
                                             ['x', 'y'] + ['y_f{}'.format(i) for i in range(8)])
