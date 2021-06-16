@@ -1,3 +1,6 @@
+"""Training of explanation models.
+"""
+
 from model.r_model import DVAE, VAECE, GVAE, LVAE, ADA_GVAE
 from model.cd_model import CD_DVAE
 

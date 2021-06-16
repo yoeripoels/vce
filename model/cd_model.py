@@ -3,10 +3,7 @@
 from model.base import CD
 from model.r_model import DVAE
 import tensorflow as tf
-from tensorflow import keras
 from model.component import Classifier
-from model.config import ADAM_ARGS
-import numpy as np
 
 
 class CD_DVAE(DVAE, CD):
@@ -111,4 +108,3 @@ class CD_DVAE(DVAE, CD):
         z_dif = tf.clip_by_value(z_dif, 0, 2)  # clip to 2x std
         disc_pred = self.change_discriminator(z_dif)
         return disc_pred
-

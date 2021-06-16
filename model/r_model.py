@@ -547,5 +547,5 @@ class ADA_GVAE(GVAE):
 if __name__ == '__main__':
     dvae = DVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8)
     dvae.compile()
-    print(dvae)
+
 
