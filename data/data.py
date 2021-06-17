@@ -31,6 +31,48 @@ import os
 import tensorflow as tf
 
 
+# split dataset into chunks
+def split_data(list_data, num_split):
+    num_data = len(list_data)
+    N = list_data[0].shape[0]
+    for i in range(1, num_data):  # assert all arrays have equal length
+        if list_data[i].shape[0] != N:
+            raise Exception('Not all data arrays have equal length')
+
+    item_per_split = math.floor(N / num_split)  # round down, might miss up to num_split-1 elements
+    idx_shuffle = np.random.permutation(N)  # shuffle entire data set
+
+    for i in range(num_data):
+        list_data[i] = list_data[i][idx_shuffle]
+    # now split up into pieces
+    split_list = []
+    for i in range(num_data):
+        split_datasets = []
+        for j in range(num_split):
+            split = list_data[i][j * item_per_split:(j + 1) * item_per_split]
+            split_datasets.append(split)
+        split_list.append(split_datasets)
+    return split_list
+
+
+# write chunks to disk
+def split_write(directory, dataset_list, name_list, num_split=20):
+    # get total size
+    N = dataset_list[0].shape[0]
+
+    # split data
+    split_lists = split_data(dataset_list, num_split)
+    for data_splits, name in zip(split_lists, name_list):
+        folder_name = os.path.join(directory, name)
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+        for i in range(len(data_splits)):
+            np.save(os.path.join(folder_name, '{}.npy'.format(i)), data_splits[i])
+        # save total size
+        with open(os.path.join(folder_name, 'size.txt'), 'w') as f:
+            f.write(str(N))
+
+
 # load chunks from disk
 def get_batch_list_chunk(batch_size, data_list, start_idx, idx_order, tuple_split=-1):
     # we process batch_size elements from the chunk starting at start_idx, using idx_order

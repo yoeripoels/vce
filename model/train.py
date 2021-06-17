@@ -61,4 +61,7 @@ if __name__ == '__main__':
         ada_gvae.fit(generator, epochs=1, steps_per_epoch=10)
         ada_gvae.save(os.path.join(save_dir, 'adagvae-test'))
         new_m = ADA_GVAE.from_disk(os.path.join(save_dir, 'adagvae-test'))
-
+    '''
+    Look into using ADA-GVAE with arbitrary grouped images (i.e., not k-1), 
+    and GVAE with all dimensions set at once
+    '''

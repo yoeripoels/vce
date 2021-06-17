@@ -3,7 +3,7 @@
 import math
 import numpy as np
 import random
-import util.vis as vis
+import util.visualization as vis
 
 class LineSegment:
     def __init__(self, x1, y1, x2, y2):
@@ -330,54 +330,4 @@ def lines_to_shape(lines, name=''):
 
 
 if __name__ == '__main__':
-    #  some helper functions to create data
-    def create_line_interp(p0, p1, num_point):
-        x0, y0 = p0
-        x1, y1 = p1
-        line = []
-        for i in range(num_point):
-            ratio = i / (num_point - 1)
-            line.append((x0 * (1 - ratio) + x1 * ratio, y0 * (1 - ratio) + y1 * ratio))
-        return line
-
-    def idx_to_lines(lines, idx):
-        return [lines[i] for i in idx]
-
-    def idx_to_shape(lines, idx):
-        l = [lines[i] for i in idx]
-        return lines_to_shape(l)
-
-    sm = ShapeParser(w=32, h=32)
-
-    line_left = create_line_interp((0.2, 0.2), (0.2, 0.8), 20)
-    line_right = create_line_interp((0.8, 0.2), (0.8, 0.8), 20)
-    line_top = create_line_interp((0.2, 0.2), (0.8, 0.2), 20)
-    line_bottom = create_line_interp((0.2, 0.8), (0.8, 0.8), 20)
-    cross_a = create_line_interp((0.2, 0.2), (0.8, 0.8), 20)
-    cross_b = create_line_interp((0.2, 0.8), (0.8, 0.2), 20)
-    hor = create_line_interp((0.2, 0.5), (0.8, 0.5), 20)
-    ver = create_line_interp((0.5, 0.2), (0.5, 0.8), 20)
-    #            0          1           2         3            4        5        6    7
-    all_lines = [line_left, line_right, line_top, line_bottom, cross_a, cross_b, hor, ver]
-    classes = [[6, 7], [6], [0, 1, 2, 3], [2, 3, 4, 5], [0, 1, 4, 5], [2, 3, 6], [0, 1, 7], [0, 2, 5], [1, 3, 5]]
-    class_9 = [[2, 3, 4], [2, 3, 5]]
-    classes_lines = [idx_to_lines(all_lines, classes[i]) for i in range(len(classes))]
-    class_9_lines = [idx_to_lines(all_lines, class_9[i]) for i in range(len(class_9))]
-
-    classes_shape = [lines_to_shape(l) for l in classes_lines]
-    class_9_shape = [lines_to_shape(l) for l in class_9_lines]
-
-    images_clean = []
-    for i in range(len(classes)):
-        images_clean.append(sm.shape_to_image(classes_shape[i], edge_fade=0.04))
-    for i in range(len(class_9)):
-        images_clean.append(sm.shape_to_image(class_9_shape[i], edge_fade=0.04))
-
-    images_distort = []
-    for i in range(len(classes)):
-        images_distort.append(sm.random_modification(classes_shape[i]))
-    for i in range(len(class_9)):
-        s = idx_to_shape(all_lines, class_9[i])
-        images_distort.append(sm.random_modification(class_9_shape[i]))
-    vis.plot_images([images_clean, images_distort])
-
+    pass
