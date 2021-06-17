@@ -118,13 +118,19 @@ class DVAE(REPR):
         _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
         return self.get_metric(loss=l, pred=pred, y=y)
 
-    def encode_y(self, x):
-        mu_y, _ = self.encoder_y(x)
-        return mu_y
+    def encode_y(self, x, mean=True):
+        mu_y, log_sigma_y = self.encoder_y(x)
+        if mean:
+            return mu_y
+        else:
+            return self.sample(mu_y, log_sigma_y)
 
-    def encode_x(self, x):
-        mu_x, _ = self.encoder_x(x)
-        return mu_x
+    def encode_x(self, x, mean=True):
+        mu_x, log_sigma_x = self.encoder_x(x)
+        if mean:
+            return mu_x
+        else:
+            return self.sample(mu_x, log_sigma_x)
 
     def decode(self, z_y, z_x):
         return self.decoder(tf.concat([z_y, z_x], axis=1))
@@ -403,7 +409,8 @@ class GVAE(DVAE):
     "H. Hosoya. Group-based learning of disentangled representations with generalizability for novel contents." -
     https://www.ijcai.org/Proceedings/2019/0348.pdf
 
-    (note that ADA-GVAE implemention is also in this class, its implementation is a mere wrapper around GVAE)
+    (note that the ADA-GVAE implemention is also in this class, its implementation is a mere wrapper around GVAE:
+    merge_dim(..) corresponds to GVAE, whereas merge_heuristically(..) corresponds to ADA-GVAE.)
     """
 
     _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
@@ -449,7 +456,7 @@ class GVAE(DVAE):
 
     def merge_heuristically(self, mu_a, log_sigma_a, mu_b, log_sigma_b):
         """Average all but one dimensions of a and b. This remaining dimension is picked heuristically, as the
-        dimension with the largets KL-divergence"""
+        dimension with the largest KL-divergence. See ADA-GVAE"""
         # create normal distr and take kl divergences
         distr_a = tfp.distributions.Normal(loc=mu_a, scale=tf.math.exp(log_sigma_a))
         distr_b = tfp.distributions.Normal(loc=mu_b, scale=tf.math.exp(log_sigma_b))
@@ -535,6 +542,8 @@ class ADA_GVAE(GVAE):
     This disentanglement concept is based on that of ADA-GVAE (being a 1-dimension differing version thereof):
     "F. Locatello, B. Poole, G. Rätsch, B. Schölkopf, O. Bachem, and M. Tschannen. Weakly supervised
     disentanglement without compromises." - https://proceedings.mlr.press/v119/locatello20a/locatello20a.pdf
+
+    The implementation of this concept is in GVAE, merge_heuristically() specifically.
     """
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
                  optimizer=None, **kwargs):
