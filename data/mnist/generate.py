@@ -75,7 +75,7 @@ if __name__ == '__main__':
     augment_out_dir = os.path.join('tmp', 'augment_full')
     for datafile, filename in zip([ cpair_p_a,   cpair_p_b,   cpair_n_a,   cpair_n_b],
                                   ['cpair_p_a', 'cpair_p_b', 'cpair_n_a', 'cpair_n_b']):
-        np.save(filename, datafile)
+        np.save(os.path.join(augment_out_dir, filename), datafile)
 
     # parse / pad / reshape all data for creating the final dataset
     cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b, data_x = [parse_mnist(d) for d in
