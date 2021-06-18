@@ -17,7 +17,7 @@ from tensorflow.keras.datasets import mnist
 import os
 
 
-def parse_mnist(dataset):
+def parse_data_x_mnist(dataset):
     h, w, d = 28, 28, 1
     dataset = dataset.reshape(dataset.shape[0], h, w, d)
     dataset = np.pad(dataset, ((0, 0), (2, 2), (2, 2), (0, 0)), 'constant')
@@ -39,18 +39,18 @@ def augment_dataset(dataset, n=None, max_per_image=3, random_per_image=True):
     else:
         n = min(n, dataset.shape[0])
     for i in range(n):
-        image = dataset[i]
-        stroke_map = augment.split_digit(image)  # split our image
+        img = dataset[i]
+        stroke_map = augment.split_digit(img)  # split our image
         num_stroke = np.amax(stroke_map) + 1
         to_select = min(max_per_image, num_stroke)
         for j in range(to_select):
             show_a, show_b = random_pair(num_stroke, 1)
-            out_pair_a.append(augment.highlight_strokes(image, stroke_map, show_a))
-            out_pair_b.append(augment.highlight_strokes(image, stroke_map, show_b))
+            out_pair_a.append(augment.highlight_strokes(img, stroke_map, show_a))
+            out_pair_b.append(augment.highlight_strokes(img, stroke_map, show_b))
             if num_stroke > 2:
                 show_a_adv, show_b_adv = random_pair(num_stroke, np.random.randint(2, num_stroke))
-                out_adv_pair_a.append(augment.highlight_strokes(image, stroke_map, show_a_adv))
-                out_adv_pair_b.append(augment.highlight_strokes(image, stroke_map, show_b_adv))
+                out_adv_pair_a.append(augment.highlight_strokes(img, stroke_map, show_a_adv))
+                out_adv_pair_b.append(augment.highlight_strokes(img, stroke_map, show_b_adv))
         if (i+1) % 100 == 0:
             print('Done handling {}/{} images ({:.2f}%)'.format(i+1, n, (i+1)/n*100))
     out_pair_a = np.array(out_pair_a, dtype=np.uint8)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
         np.save(os.path.join(augment_out_dir, filename), datafile)
 
     # parse / pad / reshape all data for creating the final dataset
-    cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b, data_x = [parse_mnist(d) for d in
+    cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b, data_x = [parse_data_x_mnist(d) for d in
                                                           [cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b, data_x]]
     data_y = postprocess.parse_data_y(data_y, num_class=10)
 

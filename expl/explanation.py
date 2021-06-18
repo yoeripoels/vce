@@ -24,3 +24,9 @@ def get_increasing(perm_array):
         cur = new_cur
     cur = [np.array(c) for c in cur]
     return cur
+
+
+# interpolate from x_a -> x_b, and from x_a -> most likely alternative class
+# selection of candidates (threshold)
+# then linear interpolation, swap dimensions at once, and explanation generator
+# for explanation generator -> build graph. fill graph efficiently. dijkstra on graph.

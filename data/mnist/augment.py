@@ -42,29 +42,29 @@ def dist(p0, p1):
 
 
 # image thresholding (as done in https://arxiv.org/abs/1611.03068)
-def threshold_image(image):
+def threshold_image(img):
     # threshold until number of connected components changes
-    num_con_4, _ = cv2.connectedComponents(image, connectivity=4)
-    num_con_8, _ = cv2.connectedComponents(image, connectivity=8)
-    num_pixels_min = round(cv2.countNonZero(image)/2)
+    num_con_4, _ = cv2.connectedComponents(img, connectivity=4)
+    num_con_8, _ = cv2.connectedComponents(img, connectivity=8)
+    num_pixels_min = round(cv2.countNonZero(img) / 2)
     done = False
     step_size = 25
     threshold = 0
-    _, c_image = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
+    _, c_img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
     while not done:
         # increase threshold
         threshold += step_size
-        _, new_image = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
-        num_con_4_new, _ = cv2.connectedComponents(new_image, connectivity=4)
-        num_con_8_new, _ = cv2.connectedComponents(new_image, connectivity=8)
-        num_pixels_new = cv2.countNonZero(new_image)
+        _, new_img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
+        num_con_4_new, _ = cv2.connectedComponents(new_img, connectivity=4)
+        num_con_8_new, _ = cv2.connectedComponents(new_img, connectivity=8)
+        num_pixels_new = cv2.countNonZero(new_img)
         # verify we still fit the conditions
         if (num_pixels_new < num_pixels_min) or (num_con_4 != num_con_4_new or num_con_8 != num_con_8_new) or \
                 threshold >= 250:
             done = True
             break
-        c_image = new_image
-    return c_image
+        c_img = new_img
+    return c_img
 
 
 # zhang-suen thinning (https://rosettacode.org/wiki/Zhang-Suen_thinning_algorithm)
@@ -114,14 +114,14 @@ def thin_image(src):
 
 
 # graph representation of image
-def to_graph(image):
+def to_graph(img):
     # convert white pixels to (x,y) and connect to neighbours
     graph = {}
-    h, w = image.shape
+    h, w = img.shape
     surrounding = [-1, 0, 1]
     for y in range(h):
         for x in range(w):
-            if image[y][x] > 0:  # found candidate pixel
+            if img[y][x] > 0:  # found candidate pixel
                 neighbours = set()
                 # check surrounding pixels
                 for ex_y in surrounding:
@@ -131,7 +131,7 @@ def to_graph(image):
                         new_y = y+ex_y
                         new_x = x+ex_x
                         if 0 <= new_y < h and 0 <= new_x < w:
-                            if image[new_y][new_x] > 0:
+                            if img[new_y][new_x] > 0:
                                 neighbours.add((new_y, new_x))
                 graph[(y, x)] = neighbours
     return graph
@@ -390,12 +390,12 @@ def split_strokes(graph, starting_points):
     return strokes, angle_stroke
 
 
-def map_strokes_to_image(image, strokes):
-    h, w = image.shape
+def map_strokes_to_image(img, strokes):
+    h, w = img.shape
     stroke_map = np.full((h, w), -1, dtype=np.int8)
     for y in range(h):
         for x in range(w):
-            if image[y][x] == 0:
+            if img[y][x] == 0:
                 continue  # skip black pixels
             nearest_stroke = -1
             min_dist = math.inf
@@ -409,43 +409,43 @@ def map_strokes_to_image(image, strokes):
     return stroke_map
 
 
-def hide_stroke(image, stroke_map, idx):
+def hide_stroke(img, stroke_map, idx):
     if not isinstance(idx, list):
         idx = [idx]
     max_stroke = np.amax(stroke_map)
     for i in idx:
         if i < 0 or i > max_stroke:
             raise ValueError('Invalid index specified')
-    out_image = image.copy()
-    h, w = image.shape
+    out_img = img.copy()
+    h, w = img.shape
     for y in range(h):
         for x in range(w):
             if stroke_map[y][x] in idx:
-                out_image[y][x] = 0
-    return out_image
+                out_img[y][x] = 0
+    return out_img
 
 
-def highlight_strokes(image, stroke_map, idx):
+def highlight_strokes(img, stroke_map, idx):
     if not isinstance(idx, list):
         idx = [idx]
     max_stroke = np.amax(stroke_map)
     for i in idx:
         if i < 0 or i > max_stroke:
             raise ValueError('Invalid index specified')
-    out_image = image.copy()
-    h, w = image.shape
+    out_img = img.copy()
+    h, w = img.shape
     for y in range(h):
         for x in range(w):
             if stroke_map[y][x] not in idx:
-                out_image[y][x] = 0
-    return out_image
+                out_img[y][x] = 0
+    return out_img
 
 
-def get_strokes(image):
+def get_strokes(img):
     """Input = image
     Output = Strokes
     """
-    img = threshold_image(image)
+    img = threshold_image(img)
     img = thin_image(img)
     graph = to_graph(img)
     starting_points = get_starting_points(graph)
@@ -453,10 +453,10 @@ def get_strokes(image):
     return stroke, angles
 
 
-def split_digit(image):
+def split_digit(img):
     """Input = image
     Output = Stroke map
     """
-    stroke, angles = get_strokes(image)
-    stroke_map = map_strokes_to_image(image, stroke)
+    stroke, angles = get_strokes(img)
+    stroke_map = map_strokes_to_image(img, stroke)
     return stroke_map

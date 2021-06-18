@@ -31,19 +31,19 @@ def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size
             if j >= len(image_data[i]):
                 continue  # no more images in this row
 
-            image = image_data[i][j]
+            img = image_data[i][j]
             image_kwargs = {}
-            if not (len(image.shape) > 2 and image.shape[2] != 1):
+            if not (len(img.shape) > 2 and img.shape[2] != 1):
                 image_kwargs['cmap'] = 'gray'  # only set colourmap to gray if we have a grayscale image
-                image_shape = image.shape[0:2]
+                image_shape = img.shape[0:2]
             else:
-                image_shape = image.shape[0:3]
+                image_shape = img.shape[0:3]
             if thresh > 0:
-                image[image < thresh] = 0
+                img[img < thresh] = 0
             if force_scale:
-                axes[i][j].imshow(image.reshape(image_shape), vmin=0, vmax=1, **image_kwargs)
+                axes[i][j].imshow(img.reshape(image_shape), vmin=0, vmax=1, **image_kwargs)
             else:
-                axes[i][j].imshow(image.reshape(image_shape), **image_kwargs)
+                axes[i][j].imshow(img.reshape(image_shape), **image_kwargs)
     if title != '':
         axes[0][0].set_title(title, fontsize=fontsize)
     if title_end != '':

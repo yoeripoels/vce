@@ -137,7 +137,7 @@ class DVAE(REPR):
 
 
 class VAECE(DVAE):
-    """Model for VAE-based Contrastive Explanation. Built upon DIVA.
+    """Model for VAE-based Contrastive Explanation (VAECE). Built upon DVAE.
     z_y's dimensions are individually disentangled using an auxiliary change-discriminator, which acts upon
     samples generated that different in a single z_y dimension.
     Further regularized using discriminator (as in GANs) on these reconstructions.
