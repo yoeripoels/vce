@@ -4,7 +4,7 @@ This synthetic data constitutes the inputs necessary to train each explanation m
 import data.synthetic.structure as structure
 import data.synthetic.cuda.generate_input as cuda_input
 import data.synthetic.cuda.process as cuda_process
-import data.synthetic.postprocess as postprocess
+import data.postprocess as postprocess
 import data.data as data
 import numpy as np
 import util.visualization as vis

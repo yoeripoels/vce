@@ -1,6 +1,4 @@
 """Functions for post-processing image data
-
-
 """
 import numpy as np
 import re
@@ -60,11 +58,6 @@ def create_data(data_dir, data_names, filename='output', w=32, h=32, n=10000, da
         data_n = data.shape[0]  # how much to change
 
         # insert into large arrays
-        #print(data_file)
-        #print(data.shape)
-        #print(x.shape)
-        #print(data_n)
-        #print(cur_idx, cur_idx+data_n)
         x[cur_idx:cur_idx + data_n] = data[:]
         if u_class:
             data_class = int(

@@ -21,8 +21,6 @@ Perhaps there's more efficient approaches to do this (e.g., multi-threaded, usin
 functions), but this works and it's not the most important, so it's not part of the rewrite ;-)
 """
 
-# TODO: Make sure Change Disc y-labels are [1, 0] = False, [0, 1] = True (so one-hot of 0/1, swapped in existing data)
-# TODO: This is now the case for presaved data --> for code creating this data, ensure this!
 # TODO: Also, for converting pre-trained models from old codebase, ensure the prediction matches (fix dense layer)
 import numpy as np
 import math
@@ -73,6 +71,18 @@ def split_write(directory, dataset_list, name_list, num_split=20, verbose=True):
         # save total size
         with open(os.path.join(folder_name, 'size.txt'), 'w') as f:
             f.write(str(N))
+
+
+# shuffle a dataset and reduce it's size if desired
+def shuffle_reduce(dataset, n_max=None):
+    n = dataset[0].shape[0]
+    n_data = len(dataset)
+    for i in range(n_data):
+        assert dataset[i].shape[0] == n
+    if n_max is not None:
+        n = min(n, n_max)
+    p = np.random.permutation(n)
+    return [x[p] for x in dataset]
 
 
 # load chunks from disk
