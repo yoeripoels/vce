@@ -99,7 +99,7 @@ if __name__ == '__main__':
     cuda_input_dir = os.path.join('tmp', 'cuda_process')
     subdirs = ['r', 'c', 'adv']
     # first, generate for classes 0-8
-    n_regular = 100#00
+    n_regular = 10000
     n_change_pair = n_regular // 2  # 50% positive pairs
     n_adv_change_pair = n_regular // 4  # 25% negative pairs - other 25% will be arbitrary image-combinations
     names = [str(i) for i in range(len(classes_lines))]  # classes 0-8
@@ -117,23 +117,48 @@ if __name__ == '__main__':
     #############################
     num_class = 10
     num_feature = 8
+    num_split = 20
     output_dir = 'out'
+
+    # first, create regular data (x / y / feature-labels)
     all_lines = classes_lines + class_9_lines
     all_line_indices = classes + class_9
     x, y, y_feature = postprocess.create_data(os.path.join(cuda_input_dir, subdirs[0]), all_names, filename='output',
-                                              w=w, h=h, N=n_regular * num_class,
+                                              w=w, h=h, n=n_regular * num_class,
                                               data_line_indices=all_line_indices, num_feature=num_feature,
                                               num_class=num_class)
-
+    data_list = [x, y, *y_feature]  # x/y used in each model, y_feature in LVAE
     name_list = ['x', 'y', *['y_f' + str(i) for i in range(num_feature)]]
-    data.split_write(output_dir, [x, y, *y_feature], name_list, num_split=20)
-    '''
-    dvae = [x, y]
-    cd = [x_pair_full_a, x_pair_full_b, y_pair, x, y]
-    vaece = [x, x_p, y, y_p, x_pair_full_a]
-    gvae = [x_fpair_a, x_fpair_b, y_fpair, x, y]
-    lvae = [x, y, y_f0-y_f7]
-    adagvae = [x_pos_pair_a, x_pos_pair_b, x, y]
-    check gen_syn.ipynb for details
-    '''
-    # POSTPROCESS AND WRITE TO /OUT, MODEL BY MODEL. FOR CHANGE PAIRS, MAKE SURE WE SWAP HANDLE 0/1 CORRECTLY
+    data.split_write(output_dir, data_list, name_list, num_split=num_split)  # shuffle data, split, write to disk
+
+    data.split_write(output_dir, [x, y], ['x_p', 'y_p'], num_split=num_split)  # for VAECE -> shuffle x/y as 2nd sample
+
+    # create change-pair data
+    cpair_data = []
+    idx = 0
+    for subdir, fn, per_c in [(subdirs[1], 'output', n_change_pair), (subdirs[1], 'output_b', n_change_pair),
+                              (subdirs[2], 'output', n_adv_change_pair), (subdirs[2], 'output_b', n_adv_change_pair)]:
+        cpair_data.append(postprocess.create_data(os.path.join(cuda_input_dir, subdir), all_names, filename=fn,
+                                                  w=w, h=h, n=per_c * num_class))
+        idx += 1
+    cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b = cpair_data
+    x_pair_full_a, x_pair_full_b, y_pair = postprocess.create_change_pairs(cpair_p_a, cpair_p_b, cpair_n_a, cpair_n_b)
+    data_list = [x_pair_full_a, x_pair_full_b, y_pair]
+    name_list = ['x_pair_full_a', 'x_pair_full_b', 'y_pair']
+    data.split_write(output_dir, data_list, name_list, num_split=num_split)  # for CD
+
+    x_pos_pair_a = np.repeat(cpair_p_a, 2, axis=0)  # repeat to make it equal size to x
+    x_pos_pair_b = np.repeat(cpair_p_b, 2, axis=0)  # done to easier process data in batches together with x/y etc.
+
+    data_list = [x_pos_pair_a, x_pos_pair_b]
+    name_list = ['x_pos_pair_a', 'x_pos_pair_b']
+    data.split_write(output_dir, data_list, name_list, num_split=num_split)  # for ADA-GVAE -> only uses positive pairs
+                                                                # x_pos_pair_a is also used for VAE-CE discriminator
+
+    # finally, create pairs where both images in the pair share a feature, and label this feature
+    x_fpair_a, x_fpair_b, y_fpair, y_fpair_a, y_fpair_b = postprocess.create_feature_pairs(x, y, y_feature)
+    data_list = [x_fpair_a, x_fpair_b, y_fpair]
+    name_list = ['x_fpair_a', 'x_fpair_b', 'y_fpair']
+    data.split_write(output_dir, data_list, name_list, num_split=num_split)  # for GVAE
+
+    print('#####\n# Done creating synthetic data\n#####')

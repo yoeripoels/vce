@@ -56,7 +56,9 @@ def split_data(list_data, num_split):
 
 
 # write chunks to disk
-def split_write(directory, dataset_list, name_list, num_split=20):
+def split_write(directory, dataset_list, name_list, num_split=20, verbose=True):
+    if verbose:
+        print('Splitting & writing {} to {}'.format(name_list, directory))
     # get total size
     N = dataset_list[0].shape[0]
 

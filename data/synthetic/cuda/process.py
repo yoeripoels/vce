@@ -12,7 +12,7 @@ def generate_images(data_dir, shape_name, w, h, pair=False):
         sf_input = np.load(os.path.join(data_dir, '{}_sf_input.npy'.format(shape_name)))
         sf_base_input = np.load(os.path.join(data_dir, '{}_sf_base_input.npy'.format(shape_name)))
     except FileNotFoundError:
-        print('Could not find files for [{}]'.format(os.path.join(data_dir, shape_name)))
+        print('Could not find files for {}'.format(os.path.join(data_dir, shape_name)))
         return False
     # pass to gpu
     c_shape_input = cuda.to_device(shape_input)
@@ -26,7 +26,7 @@ def generate_images(data_dir, shape_name, w, h, pair=False):
     # create the images
     griddimension = (32, 16)
     blockdimension = (32, 8)
-    print('Handling images for {}'.format(os.path.join(data_dir, shape_name)))
+    print('(CUDA) Processing images for {}'.format(os.path.join(data_dir, shape_name)))
     gpu.create_images[griddimension, blockdimension](c_shape_input, c_sf_input, c_sf_base_input, c_out)
 
     # retrieve output images
@@ -36,7 +36,7 @@ def generate_images(data_dir, shape_name, w, h, pair=False):
         shape_b_input = np.load(os.path.join(data_dir, '{}_shape_b_input.npy'.format(shape_name)))
         c_shape_b_input = cuda.to_device(shape_b_input)
         c_out_b = cuda.to_device(np.zeros((N, h, w)))
-        print('Handling paired images for {}'.format(os.path.join(data_dir, shape_name)))
+        print('(CUDA) Processing paired images for {}'.format(os.path.join(data_dir, shape_name)))
         gpu.create_images[griddimension, blockdimension](c_shape_b_input, c_sf_input, c_sf_base_input, c_out_b)
 
         c_out_b.copy_to_host()

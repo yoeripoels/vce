@@ -69,7 +69,6 @@ def create_image_kernel(shapes, sf, sf_base, output, index):
             else:
                 output[index][y][x] = 0
 
-
 # creating all images
 @cuda.jit
 def create_images(shapes, sf, sf_base, output):

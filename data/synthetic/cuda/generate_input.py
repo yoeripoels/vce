@@ -129,6 +129,7 @@ def generate_cuda_all(DIR, shape_list, name_list, N_regular, N_change, N_adv, su
             os.makedirs(os.path.join(DIR, subdir))
 
     for lines, name in zip(shape_list, name_list):
+        print('Generating CUDA input for {} in {}'.format(name, DIR))
         # regular samples
         shape_in, strokefield_in, strokefield_base = generate_cuda(lines, N_regular)
         np.save(os.path.join(DIR, subdirs[0], '{}_shape_input.npy'.format(name)), shape_in)
