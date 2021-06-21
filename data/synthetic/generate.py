@@ -9,6 +9,7 @@ import data.data as data
 import numpy as np
 import util.visualization as vis
 import os
+import pickle
 
 
 def create_line_interp(p0, p1, num_point):
@@ -44,6 +45,7 @@ if __name__ == '__main__':
     #############################
     # CREATE LINE/SHAPE STRUCTURE
     #############################
+    output_dir = 'out'
     w, h = 32, 32
     sp = structure.ShapeParser(w=w, h=h)
 
@@ -88,7 +90,11 @@ if __name__ == '__main__':
         s = idx_to_shape(all_lines, class_9[i])
         images_distort.append(sp.random_modification(class_9_shape[i]))
 
-    vis.plot_images([images_clean, images_distort], filename=os.path.join('out', 'dataset-sample.png'))
+    # save samples and source lines/classes
+    vis.plot_images([images_clean, images_distort], filename=os.path.join(output_dir, 'dataset-sample.png'))
+    pickle.dump(classes, open(os.path.join(output_dir, 'classes.pickle'), 'wb'))
+    pickle.dump(class_9, open(os.path.join(output_dir, 'class_9.pickle'), 'wb'))
+    pickle.dump(all_lines, open(os.path.join(output_dir, 'lines.pickle'), 'wb'))
 
     #############################
     # CREATE DATA FROM SHAPES, CONVERT TO IMAGES
@@ -118,7 +124,6 @@ if __name__ == '__main__':
     num_class = 10
     num_feature = 8
     num_split = 20
-    output_dir = 'out'
 
     # first, create regular data (x / y / feature-labels)
     all_lines = classes_lines + class_9_lines

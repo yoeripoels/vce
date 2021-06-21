@@ -11,3 +11,6 @@ make each evaluation a class instance. first ->
 
 # also, re-implement plot_solution
 
+
+def create_explanation_simple(all_lines, line_idx_a, line_idx_b, return_shape=True):
+    pass

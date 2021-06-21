@@ -227,17 +227,34 @@ class ShapeParser:
         self.w = 32
         self.h = 32
 
-    def random_modification(self, shape, w=None, h=None, no_image=False):
-        w = w if w is not None else self.w
-        h = h if h is not None else self.h
+    def get_random_modification(self, shape_normalize=None):
         vf = VectorField()
         n_v = self.rnp()
         for i in range(n_v):
             vf.add_point(self.rp(), self.rp(), self.rwv(), self.rv(), self.rv())
         distortion_amount = self.rd()
-        distorted_shape = shape.distort(vf, distortion_amount, normalize=True)
+
+        # calculate normalization info to be shared between shapes
+        if shape_normalize is not None:
+            if not isinstance(shape_normalize, list):
+                shape_normalize = [shape_normalize]
+            o_min_x, o_max_x, o_min_y, o_max_y = math.inf, -math.inf, math.inf, -math.inf
+            n_min_x, n_max_x, n_min_y, n_max_y = math.inf, -math.inf, math.inf, -math.inf
+            for shape in shape_normalize:
+                normalize_info = shape.distort_norm_range(vf, distortion_amount)
+                o_min_x = min(o_min_x, normalize_info[0])
+                o_max_x = max(o_max_x, normalize_info[1])
+                o_min_y = min(o_min_y, normalize_info[2])
+                o_max_y = max(o_max_y, normalize_info[3])
+                n_min_x = min(n_min_x, normalize_info[4])
+                n_max_x = max(n_max_x, normalize_info[5])
+                n_min_y = min(n_min_y, normalize_info[6])
+                n_max_y = max(n_max_y, normalize_info[7])
+            normalize_info = o_min_x, o_max_x, o_min_y, o_max_y, n_min_x, n_max_x, n_min_y, n_max_y
+        else:
+            normalize_info = None
         rot = self.ra()
-        rotated_shape = distorted_shape.rotate(rot)
+
         base_stroke = self.rs()
         base_weight = self.rw() / 10
         sf = StrokeField(base_stroke=base_stroke, base_weight=base_weight)
@@ -245,49 +262,43 @@ class ShapeParser:
         for i in range(n_s):
             stroke = self.rs()
             sf.add_point(self.rp(), self.rp(), self.rw(), stroke, exp=self.re())
+
+        return vf, distortion_amount, rot, sf, normalize_info
+
+    def apply_random_modification(self, shape, vf, dist, rot, sf, norm, w=None, h=None):
+        return self.apply_random_modification_multi(shape, vf, dist, rot, sf, norm, w, h)[0]
+
+    def apply_random_modification_multi(self, shapes, vf, dist, rot, sf, norm, w=None, h=None):
+        w = w if w is not None else self.w
+        h = h if h is not None else self.h
+        shapes = shapes if isinstance(shapes, list) else [shapes]
+
+        return_shapes = []
+        for in_shape in shapes:
+            shape = in_shape.distort(vf, dist, normalize=True, normalize_info=norm)
+            shape = shape.rotate(rot)
+            return_shapes.append(shape)
+        return [self.shape_to_image(s, w, h, sf=sf) for s in return_shapes]
+
+    def random_modification(self, shape, w=None, h=None, no_image=False):
         if no_image:
-            return rotated_shape, sf
+            return_shapes, sf = self.random_modification_multi(shape, w=w, h=h, no_image=no_image)
+            return return_shapes[0], sf
         else:
-            image = self.shape_to_image(rotated_shape, w, h, sf=sf)
-            return image
+            return self.random_modification_multi(shape, w=w, h=h, no_image=no_image)[0]
 
     def random_modification_multi(self, shapes, w=None, h=None, no_image=False):
         w = w if w is not None else self.w
         h = h if h is not None else self.h
-        vf = VectorField()
-        n_v = self.rnp()
-        for i in range(n_v):
-            vf.add_point(self.rp(), self.rp(), self.rwv(), self.rv(), self.rv())
-        distortion_amount = self.rd()
-        rotation_amount = self.ra()
+        shapes = shapes if isinstance(shapes, list) else [shapes]
+
+        vf, distortion_amount, rot, sf, normalize_info = self.get_random_modification(shape_normalize=shapes)
+
         return_shapes = []
-
-        # calculate normalization info to be shared between shapes
-        o_min_x,   o_max_x,  o_min_y,   o_max_y,  n_min_x,   n_max_x,  n_min_y,   n_max_y = \
-        math.inf, -math.inf, math.inf, -math.inf, math.inf, -math.inf, math.inf, -math.inf
-        for in_shape in shapes:
-            normalize_info = in_shape.distort_norm_range(vf, distortion_amount)
-            o_min_x = min(o_min_x, normalize_info[0])
-            o_max_x = max(o_max_x, normalize_info[1])
-            o_min_y = min(o_min_y, normalize_info[2])
-            o_max_y = max(o_max_y, normalize_info[3])
-            n_min_x = min(n_min_x, normalize_info[4])
-            n_max_x = max(n_max_x, normalize_info[5])
-            n_min_y = min(n_min_y, normalize_info[6])
-            n_max_y = max(n_max_y, normalize_info[7])
-        normalize_info = o_min_x, o_max_x, o_min_y, o_max_y, n_min_x, n_max_x, n_min_y, n_max_y
-        for in_shape in shapes:
-            shape = in_shape.distort(vf, distortion_amount, normalize=True, normalize_info=normalize_info)
-            shape = shape.rotate(rotation_amount)
+        for shape in shapes:
+            shape = shape.distort(vf, distortion_amount, normalize=True, normalize_info=normalize_info)
+            shape = shape.rotate(rot)
             return_shapes.append(shape)
-
-        base_stroke = self.rs()
-        base_weight = self.rw() / 10
-        sf = StrokeField(base_stroke=base_stroke, base_weight=base_weight)
-        n_s = self.rnp()
-        for i in range(n_s):
-            stroke = self.rs()
-            sf.add_point(self.rp(), self.rp(), self.rw(), stroke, exp=self.re())
 
         if no_image:
             return return_shapes, sf

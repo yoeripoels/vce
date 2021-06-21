@@ -168,36 +168,42 @@ def batch_generator_list_disk(batch_size, dirs, num_chunk, tuple_split=-1):
                 new_epoch = True
 
 
-def get_var_info(dir_base, dir_name):
-    chunks = glob.glob(os.path.join(dir_base, dir_name, '*.npy'))
+def get_var_info(dir_name, dir_base=None):
+    if dir_base is not None:
+        dir_name = os.path.join(dir_base, dir_name)
+    chunks = glob.glob(os.path.join(dir_name, '*.npy'))
     chunk_idx = [int(os.path.basename(f)[:-len('.npy')]) for f in chunks]
     chunk_idx.sort()
     num_chunk = max(chunk_idx) + 1
     assert chunk_idx == list(range(num_chunk))  # make sure we have all chunks
-    with open(os.path.join(dir_base, dir_name, 'size.txt'), 'r') as f:
+    with open(os.path.join(dir_name, 'size.txt'), 'r') as f:
         total_elem = f.read()
         total_elem = int(total_elem)
     return num_chunk, total_elem
 
 
 def get_data_disk(dir_base, dir_names, batch_size=128):
-    num_chunk, total_elem = get_var_info(dir_base, dir_names[0])
+    num_chunk, total_elem = get_var_info(dir_names[0], dir_base=dir_base)
     for d in dir_names:
-        assert num_chunk, total_elem == get_var_info(dir_base, d)
+        assert num_chunk, total_elem == get_var_info(d, dir_base=dir_base)
 
     chunk_size = math.floor(total_elem / num_chunk)
+    if batch_size > chunk_size:
+        print('WARNING: batch_size > chunk_size. Reduced batch_size from {} to {}'.format(batch_size, chunk_size))
+        batch_size = chunk_size
+
     steps_per_epoch = math.ceil(chunk_size / batch_size) * num_chunk
     full_paths = [os.path.join(dir_base, x) for x in dir_names]
     args = [batch_size, full_paths, num_chunk]
     output_types = tuple([tf.float32 for x in range(len(full_paths))])
     data_generator = tf.data.Dataset.from_generator(batch_generator_list_disk, args=args, output_types=output_types)
 
-    return data_generator, steps_per_epoch
+    return data_generator, steps_per_epoch, batch_size
 
 
 if __name__ == '__main__':
     # simple test
-    generator, spe = get_data_disk(os.path.join('synthetic', 'out'), ['x', 'y'])
+    generator, spe, batch_size = get_data_disk(os.path.join('synthetic', 'out'), ['x', 'y'])
     for i, batch in enumerate(generator):
         if i == spe:  # done with epoch
             break
