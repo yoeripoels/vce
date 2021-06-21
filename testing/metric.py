@@ -1,16 +1,19 @@
 """Metric-computation class: insert data and parameters. Then evaluate all models with same data.
 """
 import numpy as np
-from data.synthetic.structure import ShapeParser
+import data.synthetic.structure as structure
 from data.data import get_var_info
-from explanation.evaluation import create_explanation_simple
+from explanation.evaluation import explanation_add_remove
+import explanation.explanation as explanation
 from model.base import REPR
+from model.r_model import VAECE
 import random
 import os
 import pickle
 import math
 import sklearn.metrics
 from sklearn.linear_model import LogisticRegression
+from explanation.evaluation import compute_eac
 
 
 ##########################
@@ -111,16 +114,16 @@ class MetricComputation:
 
         # which indices we use, to keep computations consistent
         if self.config['elbo']:
-            self.idx_elbo = np.random.randint(low=0, high=x.shape[0], size=self.num_elbo)
+            self.idx_elbo = np.random.permutation(x.shape[0])[:self.num_elbo]
         if self.config['acc']:
-            self.idx_acc = np.random.randint(low=0, high=x.shape[0], size=self.num_acc)
-            self.idx_lacc = np.random.randint(low=0, high=x.shape[0], size=self.num_lacc)
+            self.idx_acc = np.random.permutation(x.shape[0])[:self.num_acc]
+            self.idx_lacc = np.random.permutation(x.shape[0])[:self.num_lacc]
         if self.config['mig']:
-            self.idx_mig = np.random.randint(low=0, high=x.shape[0], size=self.num_mig)
+            self.idx_mig = np.random.permutation(x.shape[0])[:self.num_mig]
 
         if self.config['eac']:  # pre-generate explanation pairs
             h, w = self.x.shape[1:3]
-            self.sp = ShapeParser(w=w, h=h)
+            self.sp = structure.ShapeParser(w=w, h=h)
 
             # create all potential pairs
             num_classes = len(data_classes)
@@ -139,8 +142,7 @@ class MetricComputation:
             for i, (a, b) in enumerate(self.eac_pair):
                 # create a sample explanation so we can create a 'random modification' and normalize it
                 # with respect to an expected shape
-                sample_exp = create_explanation_simple(self.data_lines, self.data_classes[a], self.data_classes[b],
-                                                       return_shape=True)
+                sample_exp = explanation_add_remove(self.data_lines, self.data_classes[a], self.data_classes[b])
                 if i < num_before:  # if we are to share the style / modification
                     mod = self.sp.get_random_modification(sample_exp)
                     self.eac_pair_modification.append((mod, mod))
@@ -273,9 +275,45 @@ class MetricComputation:
         acc_x = lgs.score(z_x, y)
         return acc_y, acc_x
 
-    def eac(self, model: REPR):
+    def eac(self, model: REPR, expl_type='all'):
         if not self.config['eac']:
             return False
+        # parse what type of explanations we will generate / compare
+        if expl_type == 'all':
+            expl_map = ['sm', 'dim', 'graph'] if isinstance(model, VAECE) else ['sm', 'dim']
+        elif expl_type in ['sm', 'dim', 'graph']:
+            if expl_type == 'graph' and not isinstance(model, VAECE):
+                raise ValueError('Cannot compute eac for model classes that are not VAE-CE')
+            expl_map = [expl_type]
+        else:
+            raise ValueError('Explanation type not found')
+
+        # generate the explanations
+        explanations = []
+        for (a, b), (mod_a, mod_b) in zip(self.eac_pair, self.eac_pair_modification):
+            candidates = []
+            shape_a = structure.lines_to_shape(self.data_lines[i] for i in self.data_classes[a])
+            shape_b = structure.lines_to_shape(self.data_lines[i] for i in self.data_classes[b])
+            image_a = self.sp.apply_random_modification(shape_a, *mod_a)
+            image_b = self.sp.apply_random_modification(shape_b, *mod_b)
+
+            for t in expl_map:
+                if t == 'sm':
+                    ex = explanation.interpolation_explanation(model, image_a, image_b)
+                elif t == 'dim':
+                    ex = explanation.dimension_swap_explanation(model, image_a, image_b)
+                elif t == 'graph':
+                    ex = explanation.graph_explanation(model, image_a, image_b)
+                candidates.append(ex)
+            explanations.append(candidates)
+
+        # compute the eac based of these explanations
+        eac, solutions_expl, solutions_map = compute_eac(explanations, self.data_lines, self.data_classes,
+                                                         self.eac_pair, self.eac_pair_modification, self.sp)
+
+        # average out the costs per type and return
+        eac = np.array(eac)
+        return {expl_map[i]: sum(eac[:][i])/len(eac[:][i]) for i in range(len(expl_map))}
 
     def encode_all(self, model: REPR, idx=None, encode_type='y', batch_size=1000):
         if encode_type not in ['x', 'y']:
