@@ -118,22 +118,38 @@ class DVAE(REPR):
         _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
         return self.get_metric(loss=l, pred=pred, y=y)
 
-    def encode_y(self, x, mean=True):
+    def encode_y(self, x, encode_type='mean'):
         mu_y, log_sigma_y = self.encoder_y(x)
-        if mean:
+        if encode_type == 'mean':
             return mu_y
-        else:
+        elif encode_type == 'sample':
             return self.sample(mu_y, log_sigma_y)
+        elif encode_type == 'params':
+            return mu_y, log_sigma_y
 
-    def encode_x(self, x, mean=True):
+    def encode_x(self, x, encode_type='mean'):
         mu_x, log_sigma_x = self.encoder_x(x)
-        if mean:
+        if encode_type == 'mean':
             return mu_x
-        else:
+        elif encode_type == 'sample':
             return self.sample(mu_x, log_sigma_x)
+        elif encode_type == 'params':
+            return mu_x, log_sigma_x
 
     def decode(self, z_y, z_x):
         return self.decoder(tf.concat([z_y, z_x], axis=1))
+
+    def classify_y(self, x, use_mean=True):
+        encode_type = 'mean' if use_mean else 'sample'
+        z_y = self.encode_y(x, encode_type=encode_type)
+        pred_y = self.classifier_y(z_y)
+        return pred_y
+
+    def classify_x(self, x, use_mean=True):
+        encode_type = 'mean' if use_mean else 'sample'
+        z_x = self.encode_x(x, encode_type=encode_type)
+        pred_x = self.classifier_x(z_x)
+        return pred_x
 
 
 class VAECE(DVAE):

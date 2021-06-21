@@ -61,18 +61,28 @@ class REPR(keras.Model, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def encode_y(self, batch, mean=True):
+    def encode_y(self, batch, encode_type='mean'):
         """Encode a batch to the latent representation (sampled) of the class-specific dimensions"""
         pass
 
     @abstractmethod
-    def encode_x(self, batch, mean=True):
+    def encode_x(self, batch, encode_type='mean'):
         """Encode a batch to the latent representation (sampled) of the class-unrelated dimensions"""
         pass
 
     @abstractmethod
     def decode(self, z_y, z_x):
         """Decode a batch of latent representations to the original data"""
+        pass
+
+    @abstractmethod
+    def classify_y(self, batch, use_mean=True):
+        """Classify a batch according to the latent representation of class-specific dimensions"""
+        pass
+
+    @abstractmethod
+    def classify_x(self, batch, use_mean=True):
+        """Classify a batch according to the latent representation of class-unrelated dimensions"""
         pass
 
     '''

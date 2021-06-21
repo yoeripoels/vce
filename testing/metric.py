@@ -4,9 +4,45 @@ import numpy as np
 from data.synthetic.structure import ShapeParser
 from data.data import get_var_info
 from expl.evaluation import create_explanation_simple
+from model.base import REPR
 import random
 import os
 import pickle
+import math
+import sklearn.metrics
+from sklearn.linear_model import LogisticRegression
+
+
+##########################
+# mig helper functions from https://github.com/google-research/disentanglement_lib/
+##########################
+def histogram_discretize(target, num_bins=20):
+    """Discretization based on histograms."""
+    discretized = np.zeros_like(target)
+    for i in range(target.shape[0]):
+        discretized[i, :] = np.digitize(target[i, :], np.histogram(target[i, :], num_bins)[1][:-1])
+    return discretized
+
+
+def discrete_entropy(ys):
+    """Compute discrete entropy."""
+    num_factors = ys.shape[0]
+    h = np.zeros(num_factors)
+    for j in range(num_factors):
+        h[j] = sklearn.metrics.mutual_info_score(ys[j, :], ys[j, :])
+    return h
+
+
+def discrete_mutual_info(mus, ys):
+    """Compute discrete mutual information."""
+    num_codes = mus.shape[0]
+    num_factors = ys.shape[0]
+    m = np.zeros([num_codes, num_factors])
+    for i in range(num_codes):
+        for j in range(num_factors):
+            m[i, j] = sklearn.metrics.mutual_info_score(ys[j, :], mus[i, :])
+    return m
+##########################
 
 
 def parse_split_data(dir_name, type_name, num_chunks):
@@ -158,34 +194,109 @@ class MetricComputation:
         mc.config = config
         return mc
 
-    def mig(self, model):
+    def mig(self, model: REPR):
+        """Computes the Mutual Information Gap.
+        Introduced in
+        "T. Q. Chen, X. Li, R. B. Grosse, and D. Duvenaud. Isolating sources of disentanglement in
+        variational autoencoders." - https://arxiv.org/abs/1802.04942
+        Code adapted from https://github.com/google-research/disentanglement_lib
+        """
         if not self.config['mig']:
             return False
+        # get encodings for dataset
+        z_y = self.encode_all(model, idx=self.idx_mig, encode_type='y')
 
-    def elbo(self, model):
+        # transpose for mig calculation
+        t_factor = np.transpose(self.y_feature)
+        t_latent = np.transpose(z_y)
+        assert t_factor.shape[1] == t_latent.shape[1]
+
+        t_latent = histogram_discretize(t_latent)
+        mi = discrete_mutual_info(t_latent, t_factor)
+        assert mi.shape[0] == t_latent.shape[0]
+        assert mi.shape[1] == t_factor.shape[0]
+        entropy = discrete_entropy(t_factor)
+        sorted_mi = np.sort(mi, axis=0)[::-1]
+        discrete_mig = np.mean(np.divide(sorted_mi[0, :] - sorted_mi[1, :], entropy[:]))
+        return discrete_mig
+
+    def elbo(self, model: REPR, batch_size=1000):
         if not self.config['elbo']:
             return False
+        rec = []
+        kl_x = []
+        kl_y = []
+        x = self.x[self.idx_elbo]
+        n = x.shape[0]
+        split = int(math.ceil(n/batch_size))
+        for i in range(split):
+            # get data
+            batch = x[i*batch_size:min((i+1)*batch_size, n)]
+            ratio = batch.shape[0] / batch_size  # last batch should count less as it has less elements
 
-    def acc(self, model):
+            # forward pass
+            mu_y, log_sigma_y = model.encode_y(batch, encode_type='params')
+            z_y = model.sample(mu_y, log_sigma_y)
+            mu_x, log_sigma_x = model.encode_x(batch, encode_type='params')
+            z_x = model.sample(mu_x, log_sigma_x)
+            batch_rec = model.decode(z_y, z_x)
+
+            # compute/append/scale losses
+            kl_y.append(model.loss_kl(mu_y, log_sigma_y).numpy() * ratio)
+            kl_x.append(model.loss_kl(mu_x, log_sigma_x).numpy() * ratio)
+            rec.append(model.loss_rec(batch, batch_rec).numpy() * ratio)
+        return sum(kl_y)/len(kl_y), sum(kl_x)/len(kl_x), sum(rec)/len(rec)
+
+    def acc(self, model: REPR, batch_size=1000):
         if not self.config['acc']:
             return False
+        y = self.y[self.idx_acc]
+        pred_y = self.encode_all(model, idx=self.idx_acc, encode_type='y_pred', batch_size=batch_size)
+        pred_x = self.encode_all(model, idx=self.idx_acc, encode_type='x_pred', batch_size=batch_size)
+        acc_y = np.sum(np.argmax(pred_y, axis=-1) == np.argmax(y, axis=-1)) / y.shape[0]
+        acc_x = np.sum(np.argmax(pred_x, axis=-1) == np.argmax(y, axis=-1)) / y.shape[0]
+        return acc_y, acc_x
 
-    def lacc(self, model):
+    def lacc(self, model: REPR, batch_size=1000, max_iter=1000):
         if not self.config['acc']:
             return False
+        y = self.y[self.idx_lacc]
+        z_y = self.encode_all(model, idx=self.idx_lacc, encode_type='y', batch_size=batch_size)
+        z_x = self.encode_all(model, idx=self.idx_lacc, encode_type='x', batch_size=batch_size)
 
-    def eac(self, model):
+        lgc = LogisticRegression(max_iter=max_iter)
+        lgc.fit(z_y, y)
+        acc_y = lgc.score(z_y, y)
+
+        lgs = LogisticRegression(max_iter=max_iter)
+        lgs.fit(z_x, y)
+        acc_x = lgs.score(z_x, y)
+        return acc_y, acc_x
+
+    def eac(self, model: REPR):
         if not self.config['eac']:
             return False
 
-
-
-# mig
-
-# elbo (rec/kl)
-
-# acc from own classifier
-
-# acc using logistic regression classifier
-
-# eac
+    def encode_all(self, model: REPR, idx=None, encode_type='y', batch_size=1000):
+        if encode_type not in ['x', 'y']:
+            raise ValueError('Incorrect encode type')
+        if idx is None:
+            idx = self.idx_elbo
+        all_data = []
+        x = self.x[idx]
+        n = x.shape[0]
+        split = int(math.ceil(n/batch_size))
+        for i in range(split):
+            batch = x[i*batch_size:min((i+1)*batch_size, n)]
+            if encode_type == 'y':
+                batch_out = model.encode_y(batch)
+            elif encode_type == 'x':
+                batch_out = model.encode_x(batch)
+            elif encode_type == 'y_pred':
+                batch_out = model.encode_y(batch)
+                batch_out = model.classify_y(batch_out)
+            elif encode_type == 'x_pred':
+                batch_out = model.encode_x(batch)
+                batch_out = model.classify_x(batch_out)
+            all_data.extend(batch_out)
+        return np.array(all_data)
