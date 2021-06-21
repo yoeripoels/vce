@@ -3,7 +3,7 @@
 import numpy as np
 from data.synthetic.structure import ShapeParser
 from data.data import get_var_info
-from expl.evaluation import create_explanation_simple
+from explanation.evaluation import create_explanation_simple
 from model.base import REPR
 import random
 import os
