@@ -92,9 +92,9 @@ if __name__ == '__main__':
 
     # save samples and source lines/classes
     vis.plot_images([images_clean, images_distort], filename=os.path.join(output_dir, 'dataset-sample.png'))
-    pickle.dump(classes, open(os.path.join(output_dir, 'classes.pickle'), 'wb'))
-    pickle.dump(class_9, open(os.path.join(output_dir, 'class_9.pickle'), 'wb'))
-    pickle.dump(all_lines, open(os.path.join(output_dir, 'lines.pickle'), 'wb'))
+    pickle.dump(classes, open(os.path.join(output_dir, 'classes.pkl'), 'wb'))
+    pickle.dump(class_9, open(os.path.join(output_dir, 'class_9.pkl'), 'wb'))
+    pickle.dump(all_lines, open(os.path.join(output_dir, 'lines.pkl'), 'wb'))
 
     #############################
     # CREATE DATA FROM SHAPES, CONVERT TO IMAGES

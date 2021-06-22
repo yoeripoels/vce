@@ -64,7 +64,7 @@ def initialize_node_state(disc_dict, chg_disc_dict, z_y_a, z_y_b, src, dest):
         chg_disc_dict[(src, dest)] = (before_z, after_z)
 
 
-def get_explanation_weights(model: VAECE, data_a, data_b, x_from='a'):
+def get_explanation_weights(model: VAECE, data_a, data_b, x_from='a', batch_size=1000):
     """Generate the weights of the explanation graph (to take shortest path through) for an image pair.
     """
     dim = model._dim_y
@@ -104,13 +104,30 @@ def get_explanation_weights(model: VAECE, data_a, data_b, x_from='a'):
     # z_x is shared throughout - tile such that the size matches
     z_x_disc = np.tile(z_x[0], (len(disc_dict), 1))
     z_x_chg_disc = np.tile(z_x[0], (len(chg_disc_dict), 1))
-    # propagate through model to get scores
-    gan_images = model.decode(disc_in, z_x_disc).numpy()
-    gan_scores = model.discriminator(gan_images).numpy()
-    chg_disc_in_a, chg_disc_in_b = model.decode(chg_disc_in_a, z_x_chg_disc), model.decode(chg_disc_in_b, z_x_chg_disc)
-    chg_disc_scores = model.change_discriminator.discriminate(chg_disc_in_a, chg_disc_in_b).numpy()
+
+    # propagate through model to get scores, in batches
+    split = int(math.ceil(len(disc_dict)/batch_size))
+    disc_images = []
+    disc_scores = []
+    for i in range(split):
+        s, e = i*batch_size, min((i+1)*batch_size, len(disc_dict))
+        b_disc_images = model.decode(disc_in[s:e], z_x_disc[s:e])
+        b_disc_scores = model.discriminator(b_disc_images)
+        disc_images.extend(b_disc_images)
+        disc_scores.extend(b_disc_scores)
+    disc_images = np.array(disc_images)
+    disc_scores = np.array(disc_scores)
+
+    split = int(math.ceil(len(chg_disc_dict)/batch_size))
+    chg_disc_scores = []
+    for i in range(split):
+        s, e = i * batch_size, min((i + 1) * batch_size, len(chg_disc_dict))
+        b_chg_disc_in_a, b_chg_disc_in_b = model.decode(chg_disc_in_a[s:e], z_x_chg_disc[s:e]), \
+                                           model.decode(chg_disc_in_b[s:e], z_x_chg_disc[s:e])
+        chg_disc_scores.extend(model.change_discriminator.discriminate(b_chg_disc_in_a, b_chg_disc_in_b))
+    chg_disc_scores = np.array(chg_disc_scores)
     ########
-    # assmple graph according to these scores
+    # assemble graph according to these scores
     ########
     graph = {}
     nodes = get_increasing(np.zeros(dim))
@@ -123,8 +140,8 @@ def get_explanation_weights(model: VAECE, data_a, data_b, x_from='a'):
         # initialize weight arrays
         out_edges = []
         for dest in all_connections:
-            gan_score = 1 - gan_scores[disc_map[dest]][1]
-            if np.sum(gan_images[disc_map[dest]]) < thresh_pixel:  # extra penalty for going to empty images
+            gan_score = 1 - disc_scores[disc_map[dest]][1]
+            if np.sum(disc_images[disc_map[dest]]) < thresh_pixel:  # extra penalty for going to empty images
                 gan_score += penalty
             chg_disc_score = 1 - chg_disc_scores[chg_disc_map[(src, dest)]][1]
             num_change = sum(list(dest)) - sum(list(src))
@@ -183,6 +200,7 @@ def graph_explanation(model: VAECE, data_a, data_b, x_from='a', return_order=Fal
             z_y_a[0][c] = z_y_b[0][c]
         step = model.decode(z_y_a, z_x)[0]
         data_out.append(step)
+    data_out = [x.numpy() for x in data_out]  # tensor -> np
     if return_order:
         return data_out, change_order
     return data_out

@@ -1,4 +1,5 @@
-"""Metric-computation class: insert data and parameters. Then evaluate all models with same data.
+"""Metric-computation class. Create it with a dataset and a size for the evaluations, then call it on examples of
+REPR to evaluate the desired metrics in a consistent manner.
 """
 import numpy as np
 import data.synthetic.structure as structure
@@ -7,6 +8,7 @@ from explanation.evaluation import explanation_add_remove
 import explanation.explanation as explanation
 from model.base import REPR
 from model.r_model import VAECE
+from model.cd_model import CD_DVAE
 import random
 import os
 import pickle
@@ -48,10 +50,10 @@ def discrete_mutual_info(mus, ys):
 ##########################
 
 
-def parse_split_data(dir_name, type_name, num_chunks):
+def parse_split_data(dir_name, num_chunk_override=None):
     num_chunk, total_elem = get_var_info(dir_name)
-    if type_name in num_chunks:
-        num_chunk = num_chunks[type_name]
+    if num_chunk_override is not None:
+        num_chunk = num_chunk_override
     shape = np.load(os.path.join(dir_name, '0.npy')).shape
     n_c, chunk_shape = shape[0], shape[1:]
     data_return = np.zeros((n_c * num_chunk, *chunk_shape))
@@ -62,35 +64,32 @@ def parse_split_data(dir_name, type_name, num_chunks):
 
 class MetricComputation:
     def __init__(self, x=None, y=None, y_feature=None, data_lines=None, data_classes=None,
-                 num_chunks=None,
-                 num_elbo=1000, num_mig=1000, num_acc=1000, num_lacc=1000, num_eac=50, eac_nostyle_ratio=.5):
+                 num_chunk=None,
+                 num_elbo=2000, num_mig=2000, num_acc=2000, num_lacc=2000, num_eac=50, eac_nostyle_ratio=.5):
         # data sets / data generators
-        if num_chunks is None:
-            num_chunks = {}
-
         if isinstance(x, str):
-            self.x = parse_split_data(x, 'x', num_chunks)
+            self.x = parse_split_data(x, num_chunk)
         elif isinstance(x, np.ndarray):
             self.x = x
         else:
             self.x = None
 
         if isinstance(y, str):
-            self.y = parse_split_data(y, 'y', num_chunks)
+            self.y = parse_split_data(y, num_chunk)
         elif isinstance(y, np.ndarray):
             self.y = y
         else:
             self.y = None
 
         if isinstance(y_feature, list) and isinstance(y_feature[0], str):
-            y_feature = [parse_split_data(y, 'y_f', num_chunks) for y in y_feature]  # process chunk-dirs to arrays
+            y_feature = [parse_split_data(y, num_chunk) for y in y_feature]  # process chunk-dirs to arrays
         if isinstance(y_feature, list) and isinstance(y_feature[0], np.ndarray):
             # process separate feature arrays to single ndarray
             n = y_feature[0].shape[0]
             num_feature = len(y_feature)
             self.y_feature = np.zeros((n, num_feature))
             for i in range(num_feature):
-                self.y_feature[:, [i]] = y_feature[:, [1]]
+                self.y_feature[:, [i]] = y_feature[i][:, [1]]
         elif isinstance(y_feature, np.ndarray):
             self.y_feature = y_feature
         else:
@@ -114,12 +113,16 @@ class MetricComputation:
 
         # which indices we use, to keep computations consistent
         if self.config['elbo']:
-            self.idx_elbo = np.random.permutation(x.shape[0])[:self.num_elbo]
+            self.num_elbo = min(self.num_elbo, self.x.shape[0])
+            self.idx_elbo = np.random.permutation(self.x.shape[0])[:self.num_elbo]
         if self.config['acc']:
-            self.idx_acc = np.random.permutation(x.shape[0])[:self.num_acc]
-            self.idx_lacc = np.random.permutation(x.shape[0])[:self.num_lacc]
+            self.num_acc = min(self.num_acc, self.x.shape[0])
+            self.idx_acc = np.random.permutation(self.x.shape[0])[:self.num_acc]
+            self.num_acc = min(self.num_lacc, self.x.shape[0])
+            self.idx_lacc = np.random.permutation(self.x.shape[0])[:self.num_lacc]
         if self.config['mig']:
-            self.idx_mig = np.random.permutation(x.shape[0])[:self.num_mig]
+            self.num_acc = min(self.num_mig, self.x.shape[0])
+            self.idx_mig = np.random.permutation(self.x.shape[0])[:self.num_mig]
 
         if self.config['eac']:  # pre-generate explanation pairs
             h, w = self.x.shape[1:3]
@@ -170,18 +173,18 @@ class MetricComputation:
         pickle.dump(self.config, open(save_name + '-config.pkl', 'wb'))
 
     @classmethod
-    def load(cls, load_name):
+    def from_disk(cls, load_name):
         config = pickle.load(open(load_name + '-config.pkl', 'rb'))
         mc = cls()
         if config['elbo']:
             mc.x = np.load(load_name + '-x.npy')
-            mc.idx_elbo = np.load(load_name, '-idx_elbo.npy')
+            mc.idx_elbo = np.load(load_name + '-idx_elbo.npy')
             mc.num_elbo = mc.idx_elbo.shape[0]
         if config['acc']:
             mc.y = np.load(load_name + '-y.npy')
             mc.idx_acc = np.load(load_name + '-idx_acc.npy')
             mc.num_acc = mc.idx_acc.shape[0]
-            mc.idx_lacc = np.load(load_name + 'idx_lacc.npy')
+            mc.idx_lacc = np.load(load_name + '-idx_lacc.npy')
             mc.num_lacc = mc.idx_lacc.shape[0]
         if config['mig']:
             mc.y_feature = np.load(load_name + '-y_feature.npy')
@@ -190,6 +193,8 @@ class MetricComputation:
         if config['eac']:
             mc.data_lines = pickle.load(open(load_name + '-exp-lines.pkl', 'rb'))
             mc.data_classes = pickle.load(open(load_name + '-exp-classes.pkl', 'rb'))
+            h, w = mc.x.shape[1:3]
+            mc.sp = structure.ShapeParser(w=w, h=h)
             mc.eac_pair = pickle.load(open(load_name + '-exp-pair.pkl', 'rb'))
             mc.eac_pair_modification = pickle.load(open(load_name + '-exp-pair-mod.pkl', 'rb'))
             mc.num_eac, mc.eac_nostyle_ratio = pickle.load(open(load_name + '-exp-setting.pkl', 'rb'))
@@ -209,7 +214,7 @@ class MetricComputation:
         z_y = self.encode_all(model, idx=self.idx_mig, encode_type='y')
 
         # transpose for mig calculation
-        t_factor = np.transpose(self.y_feature)
+        t_factor = np.transpose(self.y_feature[self.idx_mig])
         t_latent = np.transpose(z_y)
         assert t_factor.shape[1] == t_latent.shape[1]
 
@@ -222,7 +227,7 @@ class MetricComputation:
         discrete_mig = np.mean(np.divide(sorted_mi[0, :] - sorted_mi[1, :], entropy[:]))
         return discrete_mig
 
-    def elbo(self, model: REPR, batch_size=1000):
+    def elbo(self, model: REPR, batch_size=1000, rec_mean=True):
         if not self.config['elbo']:
             return False
         rec = []
@@ -234,13 +239,18 @@ class MetricComputation:
         for i in range(split):
             # get data
             batch = x[i*batch_size:min((i+1)*batch_size, n)]
+            batch = batch.astype('float32')
             ratio = batch.shape[0] / batch_size  # last batch should count less as it has less elements
 
             # forward pass
             mu_y, log_sigma_y = model.encode_y(batch, encode_type='params')
-            z_y = model.sample(mu_y, log_sigma_y)
             mu_x, log_sigma_x = model.encode_x(batch, encode_type='params')
-            z_x = model.sample(mu_x, log_sigma_x)
+            if rec_mean:
+                z_y = mu_y
+                z_x = mu_x
+            else:
+                z_y = model.sample(mu_y, log_sigma_y)
+                z_x = model.sample(mu_x, log_sigma_x)
             batch_rec = model.decode(z_y, z_x)
 
             # compute/append/scale losses
@@ -263,6 +273,8 @@ class MetricComputation:
         if not self.config['acc']:
             return False
         y = self.y[self.idx_lacc]
+        y = np.argmax(y, axis=1)  # convert one-hot encoding to class labels
+
         z_y = self.encode_all(model, idx=self.idx_lacc, encode_type='y', batch_size=batch_size)
         z_x = self.encode_all(model, idx=self.idx_lacc, encode_type='x', batch_size=batch_size)
 
@@ -292,8 +304,8 @@ class MetricComputation:
         explanations = []
         for (a, b), (mod_a, mod_b) in zip(self.eac_pair, self.eac_pair_modification):
             candidates = []
-            shape_a = structure.lines_to_shape(self.data_lines[i] for i in self.data_classes[a])
-            shape_b = structure.lines_to_shape(self.data_lines[i] for i in self.data_classes[b])
+            shape_a = structure.lines_to_shape([self.data_lines[i] for i in self.data_classes[a]])
+            shape_b = structure.lines_to_shape([self.data_lines[i] for i in self.data_classes[b]])
             image_a = self.sp.apply_random_modification(shape_a, *mod_a)
             image_b = self.sp.apply_random_modification(shape_b, *mod_b)
 
@@ -315,8 +327,17 @@ class MetricComputation:
         eac = np.array(eac)
         return {expl_map[i]: sum(eac[:][i])/len(eac[:][i]) for i in range(len(expl_map))}
 
+    def compute_all(self, model: REPR):
+        metric = {}
+        metric['kl_y'], metric['kl_x'], metric['rec'] = self.elbo(model)
+        metric['acc_y'], metric['acc_x'] = self.acc(model)
+        metric['lacc_y'], metric['lacc_x'] = self.lacc(model)
+        metric['mig'] = self.mig(model)
+        metric['eac'] = self.eac(model)
+        return metric
+
     def encode_all(self, model: REPR, idx=None, encode_type='y', batch_size=1000):
-        if encode_type not in ['x', 'y']:
+        if encode_type not in ['x', 'y', 'y_pred', 'x_pred']:
             raise ValueError('Incorrect encode type')
         if idx is None:
             idx = self.idx_elbo
@@ -331,10 +352,46 @@ class MetricComputation:
             elif encode_type == 'x':
                 batch_out = model.encode_x(batch)
             elif encode_type == 'y_pred':
-                batch_out = model.encode_y(batch)
-                batch_out = model.classify_y(batch_out)
+                batch_out = model.classify_y(batch)
             elif encode_type == 'x_pred':
-                batch_out = model.encode_x(batch)
-                batch_out = model.classify_x(batch_out)
+                batch_out = model.classify_x(batch)
             all_data.extend(batch_out)
         return np.array(all_data)
+
+
+if __name__ == '__main__':
+    # initialize our data
+    data_base = os.path.join('..', 'data', 'synthetic', 'out_old')
+    x = os.path.join(data_base, 'x')
+    y = os.path.join(data_base, 'y')
+    y_feature = [os.path.join(data_base, 'y_f{}'.format(i)) for i in range(8)]
+    data_lines = pickle.load(open(os.path.join(data_base, 'lines.pkl'), 'rb'))
+    classes_0_8 = pickle.load(open(os.path.join(data_base, 'classes.pkl'), 'rb'))
+    classes_9 = pickle.load(open(os.path.join(data_base, 'class_9.pkl'), 'rb'))
+    data_classes = classes_0_8 + [classes_9[0]]  # only take first variant of 9, so we have 10 items in data_classes
+
+    # create metric object
+    mc = MetricComputation(x=x, y=y, y_feature=y_feature, data_lines=data_lines, data_classes=data_classes,
+                           num_chunk=5, num_eac=5)
+
+    # test on vaece
+    vaece = VAECE.from_disk(os.path.join('..', 'pretrained', 'test', 'vaece-test'))
+    cd = CD_DVAE.from_disk(os.path.join('..', 'pretrained', 'test', 'cd-test'))
+    vaece.set_cd(cd)
+    metric_out_1 = mc.compute_all(vaece)
+
+    # save metric to disk
+    mc.save('metric-test')
+    # and recreate/reload!
+    mc = MetricComputation.from_disk('metric-test')
+
+    # test on vaece again, confirm it is the same
+    metric_out_2 = mc.compute_all(vaece)
+
+    eps = 0.000001
+    for k in metric_out_1:
+        if isinstance(metric_out_1[k], dict):
+            for k_ in metric_out_1[k]:
+                assert abs(metric_out_1[k][k_] - metric_out_2[k][k_]) < eps
+        else:
+            assert abs(metric_out_1[k] - metric_out_2[k]) < eps

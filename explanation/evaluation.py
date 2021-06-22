@@ -28,7 +28,7 @@ def explanation_add_remove(all_lines, line_class_a, line_class_b, sp: structure.
         state.remove(i)
         states.append(state.copy())
     for i in to_add:
-        state.remove(i)
+        state.append(i)
         states.append(state.copy())
     shapes = []
     for i in range(len(states)):
@@ -125,8 +125,7 @@ def closest_explanation(explanations, lines, class_a, class_b, mod, sp, metric=l
     states = create_all_intermediate_states(lines, class_a, class_b)
     state_to_image = {}
     for s in states:
-        lines = [lines[i] for i in s]
-        shape = structure.lines_to_shape(lines)
+        shape = structure.lines_to_shape([lines[i] for i in s])
         # sort our indices, so we can hash them
         s = list(s)
         s.sort()
