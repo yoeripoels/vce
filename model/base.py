@@ -6,6 +6,7 @@ CD defines an abstract change-discriminator model.
 
 from abc import abstractmethod, ABCMeta
 from tensorflow import keras
+from model.config import ADAM_ARGS
 import tensorflow as tf
 import tensorflow.keras.backend as K
 import pickle
@@ -23,9 +24,11 @@ class REPR(keras.Model, metaclass=ABCMeta):
     Training is delegated to the model implementation, using train_on_batch()
     """
 
-    def __init__(self):
+    def __init__(self, optimizer=None, **kwargs):
         super(REPR, self).__init__()
         self.w = {name: 1 for name in self._name_loss + self._name_weight_extra}  # initialize loss weights
+        self.optimizer = optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)  # default optimizer
+        self.parse_weights(**kwargs)
 
     @property
     @abstractmethod
@@ -44,11 +47,6 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def _name_weight_extra(self):
         """A list with the names of extra hyperparameters, that are not loss weights"""
         return []
-
-    @abstractmethod
-    def set_train_params(self, *args):
-        """Sets the training parameters (loss weights, optimizer(s), device)"""
-        pass
 
     @abstractmethod
     def train_step(self, batch):
@@ -88,13 +86,15 @@ class REPR(keras.Model, metaclass=ABCMeta):
     '''
     Metric/settings related methods
     '''
-    def compile(self, batch_size=None, *args, **kwargs):
+    def compile(self, optimizer=None, batch_size=None, *args, **kwargs):
         """On .compile(), set metrics according to loss and accuracy names"""
-        super(REPR, self).compile(*args, **kwargs)
-        self._metric_loss = {name: keras.metrics.Mean() for name in self._name_loss}
-        self._metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
+        if optimizer:
+            self.optimizer = optimizer
         if batch_size:
             self.batch_size = batch_size
+        super(REPR, self).compile(optimizer=self.optimizer, *args, **kwargs)
+        self._metric_loss = {name: keras.metrics.Mean() for name in [self.__class__.__name__.lower()] + self._name_loss}
+        self._metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
 
     def parse_weights(self, **kwargs):
         """Set weight values according to loss names"""
@@ -114,10 +114,12 @@ class REPR(keras.Model, metaclass=ABCMeta):
             elif metric_type == 'acc':
                 self._metric_acc[name].update_state(value, y)
 
-    def update_metric_single(self, name, value, metric_type='loss', y=None):
+    def update_metric_single(self, name=None, value=None, metric_type='loss', y=None):
         """Updates a single metric. Metric type is either 'loss' or 'acc'"""
         if metric_type == 'loss':
             self._metric_loss[name].update_state(value)
+        elif metric_type == 'class_loss':
+            self._metric_loss[self.__class__.__name__.lower()].update_state(value)
         elif metric_type == 'acc':
             self._metric_acc[name].update_state(value, y)
 
@@ -172,19 +174,28 @@ class REPR(keras.Model, metaclass=ABCMeta):
     Training-related methods
     '''
     @staticmethod
-    def loss_kl(mu, log_sigma):
+    def loss_kl(mu, log_sigma, reduce=True):
         kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.exp(2 * log_sigma) - 2 * log_sigma - 1, axis=1)
-        return tf.reduce_mean(kl_loss)
+        if reduce:
+            return tf.reduce_mean(kl_loss)
+        else:
+            return kl_loss
 
     @staticmethod
-    def loss_rec(x, x_rec):
+    def loss_rec(x, x_rec, reduce=True):
         re_loss = tf.reduce_sum(tf.square(K.batch_flatten(x) - K.batch_flatten(x_rec)), axis=1)
-        return tf.reduce_mean(re_loss)
+        if reduce:
+            return tf.reduce_mean(re_loss)
+        else:
+            return re_loss
 
     @staticmethod
-    def loss_classify(y, y_true):
-        CCE = K.categorical_crossentropy(y, y_true)
-        return tf.reduce_mean(CCE)
+    def loss_classify(y, y_true, reduce=True):
+        CCE = K.categorical_crossentropy(y_true, y)
+        if reduce:
+            return tf.reduce_mean(CCE)
+        else:
+            return CCE
 
     @staticmethod
     def sample(mu, log_sigma):

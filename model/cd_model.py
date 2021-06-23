@@ -3,8 +3,8 @@
 from model.base import CD
 from model.r_model import DVAE
 import tensorflow as tf
-from model.component import Classifier
-
+from model.component import Classifier, Encoder_CD, Decoder_CD
+import tensorflow.keras as keras
 
 class CD_DVAE(DVAE, CD):
     """Change discriminator model, built upon DVAE.
@@ -20,20 +20,18 @@ class CD_DVAE(DVAE, CD):
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
                  optimizer=None, **kwargs):
         super(CD_DVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
-        self.change_discriminator = Classifier(dim_y, num_class=2)
+        # override model components
+        self.encoder_y = Encoder_CD(input_shape, dim_y)
+        self.encoder_x = Encoder_CD(input_shape, dim_x)
+        self.decoder = Decoder_CD(dim_y + dim_x, output_shape=input_shape)
+        self.classifier_y = Classifier(dim_y, num_class)
+        self.classifier_x = Classifier(dim_x, num_class)
+
+        self.change_discriminator = Classifier(dim_y, num_class=2, use_dropout=True)
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class},
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                    'class_y': self.classifier_y, 'class_x': self.classifier_x,
                                    'chg_disc': self.change_discriminator})
-
-    def set_train_params(self, optimizer=None, optimizer_disc=None, **kwargs):
-        if optimizer:
-            self.optimizer = optimizer
-        self.parse_weights(**kwargs)
-
-    def compile(self, *args, **kwargs):
-        super(CD_DVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
 
     def forward_loss(self, batch):
         x_a, x_b, disc_true, x_full, y_full = batch
@@ -41,18 +39,18 @@ class CD_DVAE(DVAE, CD):
         # regular VAE loss for both pairs
         loss_a, data_a = self.elbo_loss(x_a)
         z_y_a = data_a[2]
-        loss_b, data_b = self.elbo_loss(x_a)
+        loss_b, data_b = self.elbo_loss(x_b)
         z_y_b = data_b[2]
 
-        l_rec, l_kl_y, l_kl_x = [l_a + l_b for l_a, l_b in zip(loss_a, loss_b)]
+        l_rec, l_kl_y, l_kl_x = [(l_a + l_b) for l_a, l_b in zip(loss_a, loss_b)]
 
         # DISCRIMINATE LOSS
         z_dif = tf.math.abs(z_y_a - z_y_b)
-        z_dif = tf.clip_by_value(z_dif, 0, 2)  # clip to 2x std
+        # z_dif = tf.clip_by_value(z_dif, 0, 2)  # clip to 2x std
         disc_pred = self.change_discriminator(z_dif)
         l_disc = self.w['chg_disc'] * self.loss_classify(disc_pred, disc_true)
 
-        (l_rec_full, l_kl_y_full, l_kl_x_full, l_class), (_, _, _, class_pred_y, class_pred_x) = \
+        (l_rec_full, l_kl_y_full, l_kl_x_full, l_class), (_, _, _, class_pred_y, class_pred_x, _) = \
             super(CD_DVAE, self).forward_loss((x_full, y_full))
         l_rec += l_rec_full * self.w['full']
         l_kl_y += l_kl_y_full * self.w['full']
@@ -83,7 +81,7 @@ class CD_DVAE(DVAE, CD):
         self.update_metric(l, metric_type='loss')
         self.update_metric(pred, y=y, metric_type='acc')
         self.update_metric_single('chg_disc', pred_d, y=true_d, metric_type='acc')
-
+        self.update_metric_single(value=loss, metric_type='class_loss')
         return self.get_metric()
 
     def test_step(self, batch):
@@ -97,7 +95,7 @@ class CD_DVAE(DVAE, CD):
         self.update_metric(l, metric_type='loss')
         self.update_metric(pred, y=y, metric_type='acc')
         self.update_metric_single('chg_disc', pred_d, y=true_d, metric_type='acc')
-
+        self.update_metric_single(value=sum(l.values()), metric_type='class_loss')
         return self.get_metric()
 
     def discriminate(self, x_a, x_b):

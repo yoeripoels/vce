@@ -8,8 +8,8 @@ import tensorflow.keras.layers
 from model.config import DROPOUT_ALPHA, LEAKYRELU_ALPHA
 
 # layers shared through models
-LeakyReLU = tensorflow.keras.layers.LeakyReLU(alpha=DROPOUT_ALPHA)
-Dropout = tensorflow.keras.layers.Dropout(LEAKYRELU_ALPHA)
+LeakyReLU = tensorflow.keras.layers.LeakyReLU(alpha=LEAKYRELU_ALPHA)
+Dropout = tensorflow.keras.layers.Dropout(DROPOUT_ALPHA)
 
 
 def Encoder(input_shape, dim_z):
@@ -32,10 +32,10 @@ def Encoder(input_shape, dim_z):
     l = Flatten(name='4')(l)
 
     # latent space
-    z_mean = Dense(dim_z, name='z_mean')(l)
-    z_log_sigma = Dense(dim_z, name='z_log_sigma')(l)
+    mu = Dense(dim_z, name='z_mean')(l)
+    log_sigma = Dense(dim_z, name='z_log_sigma')(l)
 
-    return Model(x_in, [z_mean, z_log_sigma], name='encoder')
+    return Model(x_in, [mu, log_sigma], name='encoder')
 
 
 def Decoder(dim_z, output_shape=None):
@@ -101,10 +101,10 @@ def Encoder_CD(input_shape, latent_dim):
     l = Flatten(name='3')(l)
 
     # latent space
-    z_mean = Dense(latent_dim, name='z_mean')(l)
-    z_log_sigma = Dense(latent_dim, name='z_log_sigma')(l)
+    mu = Dense(latent_dim, name='z_mean')(l)
+    log_sigma = Dense(latent_dim, name='z_log_sigma')(l)
 
-    return Model(x_in, [z_mean, z_log_sigma], name='encoder')
+    return Model(x_in, [mu, log_sigma], name='encoder')
 
 
 def Decoder_CD(latent_dim, output_shape=None):

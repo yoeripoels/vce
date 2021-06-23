@@ -1,6 +1,8 @@
 """Visualization related functions.
 """
 import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
 
 
 def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size_h=20, thresh=0, adaptive=True,
@@ -30,8 +32,9 @@ def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size
 
             if j >= len(image_data[i]):
                 continue  # no more images in this row
-
             img = image_data[i][j]
+            if isinstance(img, tf.Tensor):
+                img = img.numpy()
             image_kwargs = {}
             if not (len(img.shape) > 2 and img.shape[2] != 1):
                 image_kwargs['cmap'] = 'gray'  # only set colourmap to gray if we have a grayscale image
@@ -51,4 +54,28 @@ def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size
     if filename is not None:
         plt.savefig(filename, bbox_inches='tight')
     else:
-        plt.show(bbox_inches='tight')
+        plt.show()
+
+
+def traverse_dim(model, z_y, z_x, dim, dim_range=3., num_img=7):
+    if dim[0] == 0:
+        space_y = True
+    else:
+        space_y = False
+    dim = dim[1]
+    offset = np.linspace(-dim_range, dim_range, num_img)
+    images = []
+    for i in offset:
+        if space_y:
+            orig = z_y[0][dim]
+            z_y[0][dim] = i
+            image = model.decode(z_y, z_x)[0]
+            images.append(image)
+            z_y[0][dim] = orig
+        else:
+            orig = z_x[0][dim]
+            z_x[0][dim] = i
+            image = model.decode(z_y, z_x)[0]
+            images.append(image)
+            z_x[0][dim] = orig
+    return images

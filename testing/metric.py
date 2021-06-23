@@ -330,10 +330,15 @@ class MetricComputation:
     def compute_all(self, model: REPR):
         metric = {}
         metric['kl_y'], metric['kl_x'], metric['rec'] = self.elbo(model)
+        print('ELBO: rec: {}, kl_y: {}, kl_x: {}'.format(metric['rec'], metric['kl_y'], metric['kl_x']))
         metric['acc_y'], metric['acc_x'] = self.acc(model)
+        print('acc_y: {}, acc_x: {}'.format(metric['acc_y'], metric['acc_x']))
         metric['lacc_y'], metric['lacc_x'] = self.lacc(model)
+        print('lacc_y: {}, lacc_x: {}'.format(metric['lacc_y'], metric['lacc_x']))
         metric['mig'] = self.mig(model)
+        print('mig: {}'.format(metric['mig']))
         metric['eac'] = self.eac(model)
+        print('eac: {}'.format(metric['eac']))
         return metric
 
     def encode_all(self, model: REPR, idx=None, encode_type='y', batch_size=1000):
@@ -361,7 +366,7 @@ class MetricComputation:
 
 if __name__ == '__main__':
     # initialize our data
-    data_base = os.path.join('..', 'data', 'synthetic', 'out_old')
+    data_base = os.path.join('..', 'data', 'synthetic', 'out')
     x = os.path.join(data_base, 'x')
     y = os.path.join(data_base, 'y')
     y_feature = [os.path.join(data_base, 'y_f{}'.format(i)) for i in range(8)]
@@ -379,9 +384,9 @@ if __name__ == '__main__':
     cd = CD_DVAE.from_disk(os.path.join('..', 'pretrained', 'test', 'cd-test'))
     vaece.set_cd(cd)
     metric_out_1 = mc.compute_all(vaece)
-
     # save metric to disk
     mc.save('metric-test')
+
     # and recreate/reload!
     mc = MetricComputation.from_disk('metric-test')
 

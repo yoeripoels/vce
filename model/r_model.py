@@ -33,7 +33,7 @@ class DVAE(REPR):
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
                  optimizer=None, **kwargs):
-        super(DVAE, self).__init__()
+        super(DVAE, self).__init__(optimizer, **kwargs)
         self.encoder_y = Encoder(input_shape, dim_y)
         self.encoder_x = Encoder(input_shape, dim_x)
         self.decoder = Decoder(dim_y + dim_x, output_shape=input_shape)
@@ -50,25 +50,11 @@ class DVAE(REPR):
         self._dim_x = dim_x
         self._num_class = num_class
 
-        optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)  # default optimizer
-        self.set_train_params(optimizer=optimizer, **kwargs)
-
-    def set_train_params(self, optimizer=None, batch_size=None, **kwargs):
-        if optimizer:
-            self.optimizer = optimizer
-        if batch_size:
-            self.batch_size = batch_size
-        self.parse_weights(**kwargs)
-
-    def compile(self, *args, **kwargs):
-        super(DVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
-
     def elbo_loss(self, x):
         # infer / sample latent
         mu_y, log_sigma_y = self.encoder_y(x)
-        z_y = self.sample(mu_y, log_sigma_y)
         mu_x, log_sigma_x = self.encoder_x(x)
+        z_y = self.sample(mu_y, log_sigma_y)
         z_x = self.sample(mu_x, log_sigma_x)
 
         # reconstruct
@@ -102,13 +88,13 @@ class DVAE(REPR):
             dvae_loss, dvae_data = self.forward_loss(batch)
             l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
             _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
-
             loss = sum(l.values())
         train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
                            *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
                            *self.classifier_x.trainable_variables]
         gradients = tape.gradient(loss, train_variables)
         self.optimizer.apply_gradients(zip(gradients, train_variables))
+        self.update_metric_single(value=loss, metric_type='class_loss')
         return self.get_metric(loss=l, pred=pred, y=y)
 
     def test_step(self, batch):
@@ -116,6 +102,7 @@ class DVAE(REPR):
         dvae_loss, dvae_data = self.forward_loss(batch)
         l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
         _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
+        self.update_metric_single(value=sum(l.values()), metric_type='class_loss')
         return self.get_metric(loss=l, pred=pred, y=y)
 
     def encode_y(self, x, encode_type='mean'):
@@ -171,22 +158,16 @@ class VAECE(DVAE):
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x, 'disc': self.discriminator})
 
-        optimizer_disc = optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
-        self.set_train_params(optimizer_disc=optimizer_disc, **kwargs)
+        self.optimizer_disc = optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
 
     def set_cd(self, model_cd):
         # note that we must manually set the CD after loading a model from disc, as it is not part of the model
         self.change_discriminator = model_cd
 
-    def set_train_params(self, optimizer_disc=None, **kwargs):
-        super(VAECE, self).set_train_params(**kwargs)
-        if optimizer_disc:
+    def compile(self, optimizer_disc=None, *args, **kwargs):
+        if optimizer_disc is not None:
             self.optimizer_disc = optimizer_disc
-        self.parse_weights(**kwargs)
-
-    def compile(self, *args, **kwargs):
         super(VAECE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
 
     def forward_loss(self, batch):
         x_a, x_b, y_a, y_b, x_real = batch
@@ -230,7 +211,8 @@ class VAECE(DVAE):
 
         chg_disc_pred = self.change_discriminator.discriminate(x_before, x_after)
         chg_disc_true = tf.repeat([[0., 1.]], repeats=self.batch_size, axis=0)
-        l_chg_disc = self.w['chg_disc'] * self.loss_classify(chg_disc_pred, chg_disc_true)
+        l_chg_disc = self.w['chg_disc'] * \
+                     tf.reduce_mean(self.loss_classify(chg_disc_pred, chg_disc_true, reduce=False) * dif, axis=-1)
 
         ## feed synthesized pairs + real data into discriminator, updated VAECE and discriminator ##
         disc_pred_fake = self.discriminator(tf.concat([x_before, x_after], axis=0))
@@ -275,6 +257,7 @@ class VAECE(DVAE):
 
         # update metrics
         self.update_metric({**l, **l_disc}, metric_type='loss')
+        self.update_metric_single(value=loss, metric_type='class_loss')
         self.update_metric(pred, y=y, metric_type='acc')
         self.update_metric_single('chg_disc', pred_cd, y=true_cd, metric_type='acc')
         self.update_metric_single('disc', pred_d, y=true_d, metric_type='acc')
@@ -291,6 +274,7 @@ class VAECE(DVAE):
 
         # update metrics
         self.update_metric({**l, **l_disc}, metric_type='loss')
+        self.update_metric_single(value=sum(l.values()), metric_type='class_loss')
         self.update_metric(pred, y=y, metric_type='acc')
         self.update_metric_single('chg_disc', pred_cd, y=true_cd, metric_type='acc')
         self.update_metric_single('disc', pred_d, y=true_d, metric_type='acc')
@@ -314,15 +298,17 @@ class LVAE(DVAE):
                  optimizer=None, **kwargs):
         super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
         self.num_label = num_label
-        self.classifier_l = [Classifier(1, 2, num_dense=0) for i in range(num_label)]
-        self.classifier_l_adv = [Classifier(dim_y - 1, 2) for i in range(num_label)]
+        assert self.num_label == self._dim_y
+
+        self.classifier_l = [Classifier(1, 2, num_dense=0) for _ in range(num_label)]
+        self.classifier_l_adv = [Classifier(dim_y - 1, 2) for _ in range(num_label)]
 
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
                                  'num_label': num_label},
                            models={**{'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                       'class_y': self.classifier_y, 'class_x': self.classifier_x},
                                    **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
-                                   **{'class_l_aux_' + str(i): self.classifier_l_adv[i] for i in range(num_label)}})
+                                   **{'class_l_adv_' + str(i): self.classifier_l_adv[i] for i in range(num_label)}})
 
         # initialize variables to easily get the complement dimensions during training
         self.complement = []
@@ -331,10 +317,6 @@ class LVAE(DVAE):
             opposite.remove(i)
             opposite = tf.constant(opposite)
             self.complement.append(opposite)
-
-    def compile(self, *args, **kwargs):
-        super(LVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
 
     def label_loss(self, i, dim_label_y, z_y, complement=False):
         if complement:
@@ -355,19 +337,19 @@ class LVAE(DVAE):
 
         dvae_loss, dvae_data = super(LVAE, self).forward_loss((x, y))
         l_rec, l_kl_y, l_kl_x, l_class = dvae_loss
-        z_y, z_x, x_rec, class_pred_y, class_pred_x = dvae_data
+        z_y, z_x, x_rec, class_pred_y, class_pred_x, _ = dvae_data
 
         # LABEL LOSS #
         l_label = 0
         pred_label = []
         pred_label_adv = []
         for i in range(self.num_label):
-            l_label_i, pred_i = self.label_loss(i, dim_label_y, z_y)
-            l_label += l_label_i
-            pred_label.append(pred_i)
             l_label_adv_i, pred_adv_i = self.label_loss(i, dim_label_y, z_y, complement=True)
             l_label += l_label_adv_i
             pred_label_adv.append(pred_adv_i)
+            l_label_i, pred_i = self.label_loss(i, dim_label_y, z_y)
+            l_label += l_label_i
+            pred_label.append(pred_i)
         true_label = tf.concat(dim_label_y, axis=0)
         pred_label = tf.concat(pred_label, axis=0)
         pred_label_adv = tf.concat(pred_label_adv, axis=0)
@@ -398,6 +380,7 @@ class LVAE(DVAE):
         self.update_metric(l, metric_type='loss')
         self.update_metric(pred, y=y_class, metric_type='acc')
         self.update_metric(pred_l, y=y_label, metric_type='acc')
+        self.update_metric_single(value=loss, metric_type='class_loss')
         return self.get_metric()
 
     def test_step(self, batch):
@@ -413,6 +396,7 @@ class LVAE(DVAE):
         self.update_metric(l, metric_type='loss')
         self.update_metric(pred, y=y_class, metric_type='acc')
         self.update_metric(pred_l, y=y_label, metric_type='acc')
+        self.update_metric_single(value=sum(l.values()), metric_type='class_loss')
         return self.get_metric()
 
 
@@ -428,7 +412,6 @@ class GVAE(DVAE):
     (note that the ADA-GVAE implemention is also in this class, its implementation is a mere wrapper around GVAE:
     merge_dim(..) corresponds to GVAE, whereas merge_heuristically(..) corresponds to ADA-GVAE.)
     """
-
     _name_loss = ['rec', 'kl_y', 'kl_x', 'class']
     _name_weight_extra = ['full']
     _name_acc = ['z_y', 'z_x']
@@ -440,12 +423,8 @@ class GVAE(DVAE):
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
                                  'adaptive': adaptive})
 
-    def compile(self, *args, **kwargs):
-        super(GVAE, self).compile(*args, **kwargs)
-        self.set_train_params(*args, **kwargs)
-
-    def set_train_params(self, batch_size=None, *args, **kwargs):
-        super(GVAE, self).set_train_params(**kwargs)
+    def compile(self, batch_size=None, *args, **kwargs):
+        super(GVAE, self).compile(batch_size, *args, **kwargs)
         if batch_size:
             self.batch_size = batch_size
             indices = tf.constant([range(self.batch_size)], dtype='int32')
