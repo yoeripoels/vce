@@ -86,8 +86,8 @@ def shuffle_reduce(dataset, n_max=None):
 
 
 # load chunks from disk
-def get_batch_list_chunk(batch_size, data_list, start_idx, idx_order, tuple_split=-1):
-    # we process batch_size elements from the chunk starting at start_idx, using idx_order
+def get_batch_list(batch_size, data_list, start_idx, idx_order, tuple_split=-1):
+    # we process batch_size elements from the chunk/dataset starting at start_idx, using idx_order
     # to determine which elements we pick
     batch_list = []
     num_data = len(data_list)
@@ -120,9 +120,8 @@ def get_batch_list_chunk(batch_size, data_list, start_idx, idx_order, tuple_spli
         return split_a, split_b
 
 
-# x_dir, x_mask_dir, x_hl_dir, y_dir, p_x_dir, p_x_mask_dir, p_x_hl_dir, p_y_dir
 def batch_generator_list_disk(batch_size, dirs, num_chunk, tuple_split=-1):
-    # tf.data.Dataset.from_generator converts str arguments to bytes for some reason; decode
+    # tf.data.Dataset.from_generator converts str arguments to bytes; decode
     if not isinstance(dirs[0], str):
         dirs = [x.decode('utf-8') for x in dirs]
 
@@ -157,7 +156,7 @@ def batch_generator_list_disk(batch_size, dirs, num_chunk, tuple_split=-1):
             element_idx = 0
             new_chunk = False
         # process batch
-        yield get_batch_list_chunk(batch_size, cached_chunks, element_idx, idx_order, tuple_split)
+        yield get_batch_list(batch_size, cached_chunks, element_idx, idx_order, tuple_split)
         element_idx += batch_size
 
         if element_idx >= chunk_size:  # go to next chunk; we processed all indices
@@ -195,16 +194,64 @@ def get_data_disk(dir_base, dir_names, batch_size=128):
     steps_per_epoch = math.ceil(chunk_size / batch_size) * num_chunk
     full_paths = [os.path.join(dir_base, x) for x in dir_names]
     args = [batch_size, full_paths, num_chunk]
-    output_types = tuple([tf.float32 for x in range(len(full_paths))])
-    data_generator = tf.data.Dataset.from_generator(batch_generator_list_disk, args=args, output_types=output_types)
+    output_types = tuple([tf.float32 for _ in range(len(full_paths))])
+    data_generator = tf.data.Dataset.from_generator(batch_generator_list_disk,
+                                                    args=args,
+                                                    output_types=output_types)
+
+    return data_generator, steps_per_epoch, batch_size
+
+
+def batch_generator_list(data_list):
+    def batch_generator_inner(batch_size):
+        n = data_list[0].shape[0]
+        new_epoch = True
+        while True:
+            if new_epoch:
+                # reset counters as we are processing a new epoch
+                idx = 0
+                idx_order = np.random.permutation(n)
+                new_epoch = False
+            yield get_batch_list(batch_size, data_list, idx, idx_order)
+            idx += batch_size
+            if idx >= n:
+                print('Epoch completed')
+                new_epoch = True
+    return batch_generator_inner
+
+
+def get_data(data_list, batch_size=128):
+    total_elem = data_list[0].shape[0]
+    for d in data_list:
+        assert total_elem == d.shape[0]
+    steps_per_epoch = math.ceil(total_elem / batch_size)
+    args = [batch_size]
+    output_types = tuple([tf.float32 for _ in range(len(data_list))])
+    data_generator = tf.data.Dataset.from_generator(batch_generator_list(data_list),
+                                                    args=args,
+                                                    output_types=output_types)
 
     return data_generator, steps_per_epoch, batch_size
 
 
 if __name__ == '__main__':
-    # simple test
+
+    # test for disk
+    print('Testing disk generator!')
     generator, spe, batch_size = get_data_disk(os.path.join('synthetic', 'out'), ['x', 'y'])
     for i, batch in enumerate(generator):
         if i == spe:  # done with epoch
             break
         print('batch of {}'.format(tuple([x.shape for x in batch])))
+
+    # test for all in-memory
+    print('Testing in-memory generator!')
+    x = np.zeros((1000, 32, 32, 1))
+    y = np.zeros((1000, 10))
+    generator, spe, batch_size = get_data([x, y])
+    for i, batch in enumerate(generator):
+        if i == spe:  # done with epoch
+            break
+        print('batch of {}'.format(tuple([x.shape for x in batch])))
+
+

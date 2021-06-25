@@ -21,7 +21,7 @@ class REPR(keras.Model, metaclass=ABCMeta):
     We specify functions to encode & decode data, where we expect a value for each dimension (i.e., a sample, whether
     this is implemented as, for example, mu_x or z_x ~ N(mu_x, sigma_x) is left up to the implementation).
 
-    Training is delegated to the model implementation, using train_on_batch()
+    Training is delegated to the model implementation, using train_step()
     """
 
     def __init__(self, optimizer=None, **kwargs):
