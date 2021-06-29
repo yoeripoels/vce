@@ -45,6 +45,12 @@ class DVAE(REPR):
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x})
 
+        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
+                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
+                           *self.classifier_x.trainable_variables]
+
+        self.init_optimizer('main', train_variables=train_variables)
+
         # save init params for easy access
         self._input_shape = input_shape
         self._dim_y = dim_y
@@ -92,11 +98,10 @@ class DVAE(REPR):
             l['rec'], l['kl_y'], l['kl_x'], l['class'] = dvae_loss
             _, _, _, pred['z_y'], pred['z_x'], y = dvae_data
             loss = sum(l.values())
-        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
-                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
-                           *self.classifier_x.trainable_variables]
+
+        train_variables = self._optimizers['main']['train_variables']
         gradients = tape.gradient(loss, train_variables)
-        self.optimizer.apply_gradients(zip(gradients, train_variables))
+        self._optimizers['main']['optimizer'].apply_gradients(zip(gradients, train_variables))
         self.update_metric_single(value=loss, metric_type='class_loss')
         return self.get_metric(loss=l, pred=pred, y=y)
 
@@ -162,7 +167,9 @@ class VAECE(DVAE):
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x, 'disc': self.discriminator})
 
-        self.optimizer_disc = optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
+        optimizer_disc = optimizer_disc if optimizer_disc is not None else keras.optimizers.Adam(**ADAM_ARGS)
+        train_variables_disc = self.discriminator.trainable_variables
+        self.init_optimizer('disc', optimizer=optimizer_disc, train_variables=train_variables_disc)
 
     def set_cd(self, model_cd):
         # note that we must manually set the CD after loading a model from disc, as it is not part of the model
@@ -170,7 +177,7 @@ class VAECE(DVAE):
 
     def compile(self, optimizer_disc=None, *args, **kwargs):
         if optimizer_disc is not None:
-            self.optimizer_disc = optimizer_disc
+            self.init_optimizer('disc', optimizer=optimizer_disc)
         super(VAECE, self).compile(*args, **kwargs)
 
     def forward_loss(self, batch):
@@ -248,16 +255,14 @@ class VAECE(DVAE):
             loss_disc = sum(l_disc.values())
 
         # train main representation model
-        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
-                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
-                           *self.classifier_x.trainable_variables]
+        train_variables = self._optimizers['main']['train_variables']
         gradients = tape.gradient(loss, train_variables)
-        self.optimizer.apply_gradients(zip(gradients, train_variables))
+        self._optimizers['main']['optimizer'].apply_gradients(zip(gradients, train_variables))
 
         # train discriminator
-        train_variables = self.discriminator.trainable_variables
+        train_variables = self._optimizers['disc']['train_variables']
         gradients = tape.gradient(loss_disc, train_variables)
-        self.optimizer_disc.apply_gradients(zip(gradients, train_variables))
+        self._optimizers['disc']['optimizer'].apply_gradients(zip(gradients, train_variables))
 
         # update metrics
         self.update_metric({**l, **l_disc}, metric_type='loss')
@@ -313,6 +318,13 @@ class LVAE(DVAE):
                                       'class_y': self.classifier_y, 'class_x': self.classifier_x},
                                    **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
                                    **{'class_l_adv_' + str(i): self.classifier_l_adv[i] for i in range(num_label)}})
+
+        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
+                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
+                           *self.classifier_x.trainable_variables]
+        for m in self.classifier_l + self.classifier_l_adv:
+            train_variables.extend(m.trainable_variables)
+        self.init_optimizer('main', train_variables=train_variables)
 
         # initialize variables to easily get the complement dimensions during training
         self.complement = []
@@ -377,8 +389,9 @@ class LVAE(DVAE):
                            *self.classifier_x.trainable_variables]
         for m in self.classifier_l + self.classifier_l_adv:
             train_variables.extend(m.trainable_variables)
+        train_variables = self._optimizers['main']['train_variables']
         gradients = tape.gradient(loss, train_variables)
-        self.optimizer.apply_gradients(zip(gradients, train_variables))
+        self._optimizers['main']['optimizer'].apply_gradients(zip(gradients, train_variables))
 
         # update metrics
         self.update_metric(l, metric_type='loss')

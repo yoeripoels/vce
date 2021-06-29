@@ -27,8 +27,10 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def __init__(self, optimizer=None, **kwargs):
         super(REPR, self).__init__()
         self.w = {name: 1 for name in self._name_loss + self._name_weight_extra}  # initialize loss weights
-        self.optimizer = optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)  # default optimizer
+        optimizer = optimizer if optimizer is not None else keras.optimizers.Adam(**ADAM_ARGS)  # default optimizer
         self.parse_weights(**kwargs)
+        self._optimizers = {}
+        self.init_optimizer('main', optimizer=optimizer)
 
     @property
     @abstractmethod
@@ -89,10 +91,10 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def compile(self, optimizer=None, batch_size=None, *args, **kwargs):
         """On .compile(), set metrics according to loss and accuracy names"""
         if optimizer:
-            self.optimizer = optimizer
+            self.init_optimizer('main', optimizer=optimizer)
         if batch_size:
             self.batch_size = batch_size
-        super(REPR, self).compile(optimizer=self.optimizer, *args, **kwargs)
+        super(REPR, self).compile(optimizer=self._optimizers['main']['optimizer'], *args, **kwargs)
         self._metric_loss = {name: keras.metrics.Mean() for name in [self.__class__.__name__.lower()] + self._name_loss}
         self._metric_acc = {name: keras.metrics.CategoricalAccuracy() for name in self._name_acc}
 
@@ -141,6 +143,29 @@ class REPR(keras.Model, metaclass=ABCMeta):
         if models:
             self._save_models = models
 
+    def init_optimizer(self, name, optimizer=None, train_variables=None):
+        """Initialize an optimizer in our optimizer dict, such that we can easily access its settings and
+        train variables.
+        Should be called in init()"""
+        if optimizer is None:  # check if we can use existing optimizer
+            if name in self._optimizers:
+                optimizer = self._optimizers[name]['optimizer']
+                settings = self._optimizers[name]['settings']
+            else:
+                settings = None  # otherwise, initialize as none
+        else:
+            settings = keras.optimizers.serialize(optimizer)
+
+        if train_variables is None:  # use previous train variables if they exist
+            if name in self._optimizers:
+                train_variables = self._optimizers[name]['train_variables']
+
+        self._optimizers[name] = {
+            'optimizer': optimizer,
+            'train_variables': train_variables,
+            'settings': settings
+            }
+
     def save(self, save_name):
         """Save model weights, hyperparameters and arguments to disk"""
         for name, model in self._save_models.items():
@@ -149,8 +174,14 @@ class REPR(keras.Model, metaclass=ABCMeta):
             pickle.dump(self._save_args, f)
         with open(save_name + '-hyperparams.pkl', 'wb') as f:
             pickle.dump(self.w, f)
+        for name, optimizer_info in self._optimizers.items():
+            with open(save_name + '-opt-{}-settings.pkl'.format(name), 'wb') as f:
+                pickle.dump(optimizer_info['settings'], f)
+            if optimizer_info['settings']['class_name'].lower() == 'adam':
+                with open(save_name + '-opt-{}-weights.npy'.format(name), 'wb') as f:
+                    pickle.dump(optimizer_info['optimizer'].get_weights(), f)
 
-    def load(self, load_name):
+    def load(self, load_name, load_optimizer=True):
         """Load model weights and hyperparameters from disk"""
         for name, model in self._save_models.items():
             model.load_weights(load_name + '-' + name + '.h5')
@@ -160,14 +191,27 @@ class REPR(keras.Model, metaclass=ABCMeta):
         with open(load_name + '-hyperparams.pkl', 'rb') as f:
             w = pickle.load(f)
             self.w = w
+        if load_optimizer:
+            for name, optimizer_info in self._optimizers.items():
+                with open(load_name + '-opt-{}-settings.pkl'.format(name), 'rb') as f:
+                    settings = pickle.load(f)
+                    optimizer_info['settings'] = settings
+                optimizer_info['optimizer'] = keras.optimizers.deserialize(settings)
+                if optimizer_info['settings']['class_name'].lower() == 'adam':
+                    # setup model weights
+                    with open(load_name + '-opt-{}-weights.npy'.format(name), 'rb') as f:
+                        weights = pickle.load(f)
+                    zero_grads = [tf.zeros_like(w) for w in optimizer_info['train_variables']]
+                    optimizer_info['optimizer'].apply_gradients(zip(zero_grads, optimizer_info['train_variables']))
+                    optimizer_info['optimizer'].set_weights(weights)
 
     @classmethod
-    def from_disk(cls, load_name):
+    def from_disk(cls, load_name, load_optimizer=True):
         """Create model from existing model/configuration from disk"""
         with open(load_name + '-settings.pkl', 'rb') as f:
             args = pickle.load(f)
         model = cls(**args)
-        model.load(load_name)
+        model.load(load_name, load_optimizer=load_optimizer)
         return model
 
     '''
