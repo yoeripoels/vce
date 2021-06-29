@@ -32,15 +32,16 @@ class DVAE(REPR):
     _name_acc = ['z_y', 'z_x']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, **kwargs):
+                 optimizer=None, cnn_list=None, dense_list=None, **kwargs):
         super(DVAE, self).__init__(optimizer, **kwargs)
-        self.encoder_y = Encoder(input_shape, dim_y)
-        self.encoder_x = Encoder(input_shape, dim_x)
-        self.decoder = Decoder(dim_y + dim_x, output_shape=input_shape)
+        self.encoder_y = Encoder(input_shape, dim_y, cnn_list=cnn_list, dense_list=dense_list)
+        self.encoder_x = Encoder(input_shape, dim_x, cnn_list=cnn_list, dense_list=dense_list)
+        self.decoder = Decoder(dim_y + dim_x, output_shape=input_shape, cnn_list=cnn_list, dense_list=dense_list)
         self.classifier_y = Classifier(dim_y, num_class, num_dense=0)
         self.classifier_x = Classifier(dim_x, num_class)
 
-        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class},
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
+                                 'cnn_list': cnn_list, 'dense_list': dense_list},
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x})
 
@@ -49,6 +50,8 @@ class DVAE(REPR):
         self._dim_y = dim_y
         self._dim_x = dim_x
         self._num_class = num_class
+        self._cnn_list = cnn_list
+        self._dense_list = dense_list
 
     def elbo_loss(self, x):
         # infer / sample latent
@@ -149,12 +152,13 @@ class VAECE(DVAE):
     _name_loss = ['rec', 'kl_y', 'kl_x', 'class', 'chg_disc', 'disc_vae', 'disc']
     _name_acc = ['z_y', 'z_x', 'chg_disc', 'disc']
 
-    def __init__(self, input_shape, dim_y, dim_x, num_class=10,
+    def __init__(self, input_shape, dim_y, dim_x, num_class=10, cnn_list=None, dense_list=None,
                  model_cd=None, optimizer=None, optimizer_disc=None, **kwargs):
-        super(VAECE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+        super(VAECE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, cnn_list, dense_list, **kwargs)
         self.discriminator = Discriminator(input_shape)
         self.change_discriminator = model_cd
-        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class},
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
+                                 'cnn_list': cnn_list, 'dense_list': dense_list},
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                            'class_y': self.classifier_y, 'class_x': self.classifier_x, 'disc': self.discriminator})
 
@@ -295,8 +299,8 @@ class LVAE(DVAE):
     _name_acc = ['z_y', 'z_x', 'l', 'l_adv']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10, num_label=8,
-                 optimizer=None, **kwargs):
-        super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+                 optimizer=None, cnn_list=None, dense_list=None, **kwargs):
+        super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, cnn_list, dense_list, **kwargs)
         self.num_label = num_label
         assert self.num_label == self._dim_y
 
@@ -304,7 +308,7 @@ class LVAE(DVAE):
         self.classifier_l_adv = [Classifier(dim_y - 1, 2) for _ in range(num_label)]
 
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
-                                 'num_label': num_label},
+                                 'num_label': num_label, 'cnn_list': cnn_list, 'dense_list': dense_list},
                            models={**{'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                       'class_y': self.classifier_y, 'class_x': self.classifier_x},
                                    **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
@@ -417,14 +421,14 @@ class GVAE(DVAE):
     _name_acc = ['z_y', 'z_x']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, adaptive=False, **kwargs):
-        super(GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
+                 optimizer=None, cnn_list=None, dense_list=None, adaptive=False, **kwargs):
+        super(GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, cnn_list, dense_list, **kwargs)
         self.adaptive = adaptive
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
-                                 'adaptive': adaptive})
+                                 'adaptive': adaptive, 'cnn_list': cnn_list, 'dense_list': dense_list})
 
-    def compile(self, batch_size=None, *args, **kwargs):
-        super(GVAE, self).compile(batch_size, *args, **kwargs)
+    def compile(self, optimizer=None, batch_size=None, *args, **kwargs):
+        super(GVAE, self).compile(optimizer, batch_size, *args, **kwargs)
         if batch_size:
             self.batch_size = batch_size
             indices = tf.constant([range(self.batch_size)], dtype='int32')
@@ -541,11 +545,12 @@ class ADA_GVAE(GVAE):
     The implementation of this concept is in GVAE, merge_heuristically() specifically.
     """
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, **kwargs):
+                 optimizer=None, cnn_list=None, dense_list=None, **kwargs):
         if 'adaptive' in kwargs:  # if supplied, make sure we don't pass it along twice
             assert kwargs['adaptive'] is True
             del kwargs['adaptive']
-        super(ADA_GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer=optimizer, adaptive=True, **kwargs)
+        super(ADA_GVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer=optimizer, cnn_list=cnn_list,
+                                       dense_list=dense_list, adaptive=True, **kwargs)
 
 
 if __name__ == '__main__':

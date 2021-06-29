@@ -7,7 +7,9 @@ from model.cd_model import CD_DVAE
 from data import data
 import os
 import argparse
+import numpy as np
 import tensorflow.keras as keras
+import pickle
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -15,6 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('--epoch', type=int, default=10)
     parser.add_argument('--save', type=bool, default=True)
     parser.add_argument('--save_name', type=str, default='')
+    parser.add_argument('--load_name', type=str, default='')
     parser.add_argument('--cd_name', type=str, default='cd')
     args = parser.parse_args()
     if args.save_name == '':
@@ -23,7 +26,7 @@ if __name__ == '__main__':
         save_name = args.save_name
     epochs = args.epoch
     save_dir = os.path.join('..', 'trained')
-    data_path = os.path.join('..', 'data', 'synthetic', 'out', 'old')
+    data_path = os.path.join('..', 'data', 'synthetic', 'out')
     if args.type == 'dvae':
         dvae = DVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=2, w_class=10)
         generator, spe, batch_size = data.get_data_disk(data_path, ['x', 'y'])

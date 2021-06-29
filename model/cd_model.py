@@ -18,17 +18,17 @@ class CD_DVAE(DVAE, CD):
     _name_acc = ['z_y', 'z_x', 'chg_disc']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10,
-                 optimizer=None, **kwargs):
-        super(CD_DVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, **kwargs)
-        # override model components
-        self.encoder_y = Encoder_CD(input_shape, dim_y)
-        self.encoder_x = Encoder_CD(input_shape, dim_x)
-        self.decoder = Decoder_CD(dim_y + dim_x, output_shape=input_shape)
+                 optimizer=None, cnn_list=None, dense_list=None, **kwargs):
+        if cnn_list is None:  # default encoder config is different
+            cnn_list = [(32, 4, (2, 2), 'same'),
+                        (128, 4, (1, 1), 'same')]
+        super(CD_DVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, cnn_list, dense_list, **kwargs)
         self.classifier_y = Classifier(dim_y, num_class)
         self.classifier_x = Classifier(dim_x, num_class)
 
         self.change_discriminator = Classifier(dim_y, num_class=2, use_dropout=True)
-        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class},
+        self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
+                                 'cnn_list': cnn_list, 'dense_list': dense_list},
                            models={'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                    'class_y': self.classifier_y, 'class_x': self.classifier_x,
                                    'chg_disc': self.change_discriminator})
