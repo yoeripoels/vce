@@ -33,6 +33,12 @@ class CD_DVAE(DVAE, CD):
                                    'class_y': self.classifier_y, 'class_x': self.classifier_x,
                                    'chg_disc': self.change_discriminator})
 
+        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
+                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
+                           *self.classifier_x.trainable_variables]
+
+        self.init_optimizer('main', train_variables=train_variables)
+
     def forward_loss(self, batch):
         x_a, x_b, disc_true, x_full, y_full = batch
 
