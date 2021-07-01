@@ -35,7 +35,7 @@ class CD_DVAE(DVAE, CD):
 
         train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
                            *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
-                           *self.classifier_x.trainable_variables]
+                           *self.classifier_x.trainable_variables, *self.change_discriminator.trainable_variables]
 
         self.init_optimizer('main', train_variables=train_variables)
 
@@ -77,11 +77,9 @@ class CD_DVAE(DVAE, CD):
             loss = sum(l.values())
 
         # train model + discriminator
-        train_variables = [*self.encoder_y.trainable_variables, *self.encoder_x.trainable_variables,
-                           *self.decoder.trainable_variables, *self.classifier_y.trainable_variables,
-                           *self.classifier_x.trainable_variables, *self.change_discriminator.trainable_variables]
+        train_variables = self._optimizers['main']['train_variables']
         gradients = tape.gradient(loss, train_variables)
-        self.optimizer.apply_gradients(zip(gradients, train_variables))
+        self._optimizers['main']['optimizer'].apply_gradients(zip(gradients, train_variables))
 
         # update metrics
         self.update_metric(l, metric_type='loss')
