@@ -304,16 +304,24 @@ class LVAE(DVAE):
     _name_acc = ['z_y', 'z_x', 'l', 'l_adv']
 
     def __init__(self, input_shape, dim_y, dim_x, num_class=10, num_label=8,
-                 optimizer=None, cnn_list=None, dense_list=None, **kwargs):
+                 optimizer=None, cnn_list=None, dense_list=None, label_dim=None, **kwargs):
         super(LVAE, self).__init__(input_shape, dim_y, dim_x, num_class, optimizer, cnn_list, dense_list, **kwargs)
         self.num_label = num_label
-        assert self.num_label == self._dim_y
-
-        self.classifier_l = [Classifier(1, 2, num_dense=0) for _ in range(num_label)]
-        self.classifier_l_adv = [Classifier(dim_y - 1, 2) for _ in range(num_label)]
+        assert self.num_label <= dim_y
+        if label_dim is None:
+            self.classifier_l = [Classifier(1, 2, num_dense=0) for _ in range(num_label)]
+            self.classifier_l_adv = [Classifier(dim_y - 1, 2) for _ in range(num_label)]
+            self.padding = None
+        else:
+            assert len(label_dim) == self.num_label
+            self.classifier_l = [Classifier(1, num_dim, num_dense=0) for num_dim in label_dim]
+            self.classifier_l_adv = [Classifier(dim_y - 1, num_dim) for num_dim in label_dim]
+            self.max_dim = max(label_dim)
+            self.padding = [tf.constant([[0, 0], [0, self.max_dim - num_dim]]) for num_dim in label_dim]
 
         self.set_save_info(args={'input_shape': input_shape, 'dim_y': dim_y, 'dim_x': dim_x, 'num_class': num_class,
-                                 'num_label': num_label, 'cnn_list': cnn_list, 'dense_list': dense_list},
+                                 'num_label': num_label, 'cnn_list': cnn_list, 'dense_list': dense_list,
+                                 'label_dim': label_dim},
                            models={**{'enc_y': self.encoder_y, 'enc_x': self.encoder_x, 'dec': self.decoder,
                                       'class_y': self.classifier_y, 'class_x': self.classifier_x},
                                    **{'class_l_' + str(i): self.classifier_l[i] for i in range(num_label)},
@@ -328,8 +336,8 @@ class LVAE(DVAE):
 
         # initialize variables to easily get the complement dimensions during training
         self.complement = []
-        for i in range(self.num_label):
-            opposite = list(range(self.num_label))
+        for i in range(self._dim_y):
+            opposite = list(range(self._dim_y))
             opposite.remove(i)
             opposite = tf.constant(opposite)
             self.complement.append(opposite)
@@ -338,7 +346,7 @@ class LVAE(DVAE):
         if complement:
             samples_gr = grad_reverse(z_y)  # reverse gradient
             dim = tf.gather(samples_gr, self.complement[i], axis=-1)  # get complement dims
-            dim = tf.reshape(dim, (self.batch_size, self.num_label - 1))
+            dim = tf.reshape(dim, (self.batch_size, self._dim_y - 1))
             predictions = self.classifier_l_adv[i](dim)
         else:
             dim = tf.gather(z_y, i, axis=-1)  # get correct dim
@@ -366,9 +374,22 @@ class LVAE(DVAE):
             l_label_i, pred_i = self.label_loss(i, dim_label_y, z_y)
             l_label += l_label_i
             pred_label.append(pred_i)
-        true_label = tf.concat(dim_label_y, axis=0)
-        pred_label = tf.concat(pred_label, axis=0)
-        pred_label_adv = tf.concat(pred_label_adv, axis=0)
+
+        if self.padding:  # apply padding to make all dims even, so we can calculate the acc easily
+            true_label = []
+            pred_label_p = []
+            pred_label_adv_p = []
+            for i in range(self.num_label):
+                true_label.append(tf.pad(dim_label_y[i], self.padding[i]))
+                pred_label_p.append(tf.pad(pred_label[i], self.padding[i]))
+                pred_label_adv_p.append(tf.pad(pred_label_adv[i], self.padding[i]))
+            true_label = tf.concat(true_label, axis=0)
+            pred_label = tf.concat(pred_label_p, axis=0)
+            pred_label_adv = tf.concat(pred_label_adv_p, axis=0)
+        else:  # if all dims equal, just concatenate
+            true_label = tf.concat(dim_label_y, axis=0)
+            pred_label = tf.concat(pred_label, axis=0)
+            pred_label_adv = tf.concat(pred_label_adv, axis=0)
 
         return (l_rec, l_kl_y, l_kl_x, l_class, l_label), \
                (z_y, z_x, x_rec, class_pred_y, class_pred_x, true_label, pred_label, pred_label_adv)
