@@ -175,11 +175,11 @@ def get_changes_from_path(path):
     return total_changes
 
 
-def graph_explanation(model: VAECE, data_a, data_b, x_from='a', return_order=False, **kwargs):
+def graph_explanation(model: VAECE, data_a, data_b, x_from='a', return_order=False, batch_size=1000, **kwargs):
     """Compute a graph-based explanation for VAE-CE.
     """
     # build explanation graph
-    graph_weights = get_explanation_weights(model, data_a, data_b, x_from=x_from)
+    graph_weights = get_explanation_weights(model, data_a, data_b, x_from=x_from, batch_size=batch_size)
     ex_graph = create_graph(graph_weights, **kwargs)
     s = tuple(np.zeros(model._dim_y))
     e = tuple(np.ones(model._dim_y))

@@ -213,8 +213,8 @@ class VAECE(DVAE):
         dif = tf.reduce_sum(tf.math.abs(z_y_before - z_y_after), axis=-1)
 
         # normalize such that total dif = dim_y
-        dif /= tf.reduce_sum(tf.math.abs(z_y_a - z_y_b), axis=-1)
-        dif *= self._dim_y
+        dif /= tf.reduce_sum(tf.math.abs(z_y_a - z_y_b), axis=-1)  # if the dim we changed is 100% of difference, dif=1
+        dif *= self._dim_y  # --> to _dim_y to compensate for differences in num dimensions
 
         # decode both with the same style
         x_before = self.decoder(tf.concat([z_y_before, z_x_a], axis=1))

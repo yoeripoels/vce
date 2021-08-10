@@ -6,7 +6,7 @@ import tensorflow as tf
 
 
 def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size_h=20, thresh=0, adaptive=True,
-                force_scale=True, filename=None):
+                adj=None, force_scale=True, filename=None):
     """Plots images. image_data can be a single image, a list of images (shown horizontally), or a list of lists
     of images (each list being shown as a row).
     """
@@ -51,6 +51,9 @@ def plot_images(image_data, title='', title_end='', fontsize=15, size_w=20, size
         axes[0][0].set_title(title, fontsize=fontsize)
     if title_end != '':
         axes[-1][-1].set_title(title_end, fontsize=fontsize)
+    if adj is not None:
+        wspace, hspace = adj
+        plt.subplots_adjust(wspace=wspace, hspace=hspace)
     if filename is not None:
         plt.savefig(filename, bbox_inches='tight')
     else:

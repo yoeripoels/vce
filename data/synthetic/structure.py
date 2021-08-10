@@ -140,10 +140,10 @@ class VectorField:
         self.name = name
         self.points = []
         if default_points:
-            self.add_point(-0.5, -0.5, 0, 0, 1, normalize=False)
-            self.add_point(0.5, -0.5, 0, 0, 1, normalize=False)
-            self.add_point(-0.5, 0.5, 0, 0, 1, normalize=False)
-            self.add_point(0.5, 0.5, 0, 0, 1, normalize=False)
+            self.add_point(0.25, 0.25, 0, 0, 1, normalize=False)
+            self.add_point(0.75, 0.25, 0, 0, 1, normalize=False)
+            self.add_point(0.25, 0.75, 0, 0, 1, normalize=False)
+            self.add_point(0.75, 0.75, 0, 0, 1, normalize=False)
 
     def add_point(self, x1, y1, vx, vy, s, normalize=True):
         self.points.append(VectorPoint(x1, y1, vx, vy, s, normalize))
@@ -215,7 +215,7 @@ class ShapeParser:
 
     rp = lambda _: np.random.uniform(0, 1)  # random position [0, 1]
     rw = lambda _: np.random.uniform(1, 2)  # random weight [1, 2]
-    rwv = lambda _: np.random.uniform(3, 6)  # random weight for vectors
+    rwv = lambda _: np.random.uniform(0.5, 2)  # random weight for vectors
     re = lambda _: np.random.randint(2, 4)  # random exponent [2, 4]
     rs = lambda _: np.random.uniform(0.001, 0.05)  # random stroke [0.001, 0.05]
     rnp = lambda _: np.random.randint(3, 6)  # 3-5 points
@@ -227,11 +227,11 @@ class ShapeParser:
         self.w = 32
         self.h = 32
 
-    def get_random_modification(self, shape_normalize=None):
-        vf = VectorField()
+    def get_random_modification(self, shape_normalize=None, default_points=False):
+        vf = VectorField(default_points=default_points)
         n_v = self.rnp()
         for i in range(n_v):
-            vf.add_point(self.rp(), self.rp(), self.rwv(), self.rv(), self.rv())
+            vf.add_point(self.rp(), self.rp(), self.rv(), self.rv(), self.rwv())
         distortion_amount = self.rd()
 
         # calculate normalization info to be shared between shapes

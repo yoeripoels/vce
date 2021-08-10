@@ -6,14 +6,6 @@ import dtw
 from itertools import permutations, product
 import math
 
-'''
-make each evaluation a class instance. first ->
-  1. compute eac, we have class_a, class_b, lines, mod_a, mod_b
-      --> compute_exp() and find_closest_explanation_preprocess() in explainmetric.py
-'''
-
-# also, re-implement plot_solution
-
 
 def explanation_add_remove(all_lines, line_class_a, line_class_b, sp: structure.ShapeParser=None):
     """Creates a shape-interpolation between class_a -> class_b by removing all elements that are in a but not in b, then
