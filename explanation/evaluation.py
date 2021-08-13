@@ -151,7 +151,7 @@ def compute_eac(data_explanation, lines, classes, pair, pair_modification, sp, m
     multiple candidate explanations (e.g., from different interpolation methods), which are evaluated at once.
 
     Assume data_explanation is a list of candidate-lists, where each candidate list is a list of datapoints.
-    --> e.g, data_explanations = [ [[x000, x001, x002], [x010, x011, x012, x013]], [[x100, x101], [x110, x111, x112]] ]
+    --> e.g., data_explanations = [ [[x000, x001, x002], [x010, x011, x012, x013]], [[x100, x101], [x110, x111, x112]] ]
         where x_ijk -> i = the explained pair, j = the candidates for this pair, k = the datapoint in the explanation
     """
 

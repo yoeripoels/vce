@@ -45,8 +45,16 @@ if __name__ == '__main__':
     #############################
     # CREATE LINE/SHAPE STRUCTURE
     #############################
-    output_dir = 'out'
-    w, h = 32, 32
+    output_dir = os.path.join('out')  # can change dir to out/test here
+    cuda_input_dir = os.path.join('tmp', 'cuda_process')
+    for d in [output_dir, cuda_input_dir]:
+        if not os.path.exists(d):
+            os.makedirs(d)
+
+    n_regular = 10000  # number of samples per class (1000 for test)
+
+    w, h = 32, 32  # image resolution
+
     sp = structure.ShapeParser(w=w, h=h)
 
     # create the base lines we will use to construct shapes/class-examples
@@ -102,10 +110,8 @@ if __name__ == '__main__':
     # note that data (cuda input + cuda output) is saved to disk rather than all kept in memory
 
     # set tmp dirs to use
-    cuda_input_dir = os.path.join('tmp', 'cuda_process')
     subdirs = ['r', 'c', 'adv']
     # first, generate for classes 0-8
-    n_regular = 10000
     n_change_pair = n_regular // 2  # 50% positive pairs
     n_adv_change_pair = n_regular // 4  # 25% negative pairs - other 25% will be arbitrary image-combinations
     names = [str(i) for i in range(len(classes_lines))]  # classes 0-8

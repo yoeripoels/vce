@@ -175,6 +175,12 @@ class VAECE(DVAE):
         # note that we must manually set the CD after loading a model from disc, as it is not part of the model
         self.change_discriminator = model_cd
 
+    def load_main_components(self, load_name):
+        # load only vital components, so we can test VAE-CE CD/D with other methods
+        for name, model in self._save_models.items():
+            if name in ['enc_y', 'enc_x', 'dec', 'class_y', 'class_x']:
+                model.load_weights(load_name + '-' + name + '.h5')
+
     def compile(self, optimizer_disc=None, *args, **kwargs):
         if optimizer_disc is not None:
             self.init_optimizer('disc', optimizer=optimizer_disc)
@@ -590,5 +596,3 @@ class ADA_GVAE(GVAE):
 if __name__ == '__main__':
     dvae = DVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8)
     dvae.compile()
-
-

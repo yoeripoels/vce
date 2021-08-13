@@ -151,7 +151,7 @@ def get_explanation_weights(model: VAECE, data_a, data_b, x_from='a', batch_size
     return graph
 
 
-def create_graph(graph_weights, w_disc=1, w_chg_disc=1, w_len=1):
+def create_graph(graph_weights, w_disc=0.5, w_chg_disc=1, w_len=1):
     graph = Graph()
     for s in graph_weights:
         for d, weight in graph_weights[s]:

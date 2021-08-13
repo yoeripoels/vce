@@ -58,7 +58,7 @@ def generate_cuda_input_c(shape_input_line, num_samples, pair_offset=-1, pair_of
         # handle sf
         for j in range(max_points):
             if j >= len(sf.points):
-                cuda_input_shape_sf[i][j][0] = -1 # wildcard, means no more points
+                cuda_input_shape_sf[i][j][0] = -1  # wildcard, means no more points
             else:
                 cuda_input_shape_sf[i][j] = sf.points[j].return_data()
         cuda_input_shape_sf_base[i] = sf.base_stroke, sf.base_weight

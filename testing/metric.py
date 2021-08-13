@@ -227,20 +227,23 @@ class MetricComputation:
         discrete_mig = np.mean(np.divide(sorted_mi[0, :] - sorted_mi[1, :], entropy[:]))
         return discrete_mig
 
-    def elbo(self, model: REPR, batch_size=1000, rec_mean=True):
+    def elbo(self, model: REPR, batch_size=1000, rec_mean=False):
         if not self.config['elbo']:
             return False
-        rec = []
-        kl_x = []
-        kl_y = []
+
         x = self.x[self.idx_elbo]
         n = x.shape[0]
+
+        rec = np.zeros(n)
+        kl_x = np.zeros(n)
+        kl_y = np.zeros(n)
+
         split = int(math.ceil(n/batch_size))
         for i in range(split):
             # get data
-            batch = x[i*batch_size:min((i+1)*batch_size, n)]
+            s, e = i*batch_size, min((i+1)*batch_size, n)
+            batch = x[s:e]
             batch = batch.astype('float32')
-            ratio = batch.shape[0] / batch_size  # last batch should count less as it has less elements
 
             # forward pass
             mu_y, log_sigma_y = model.encode_y(batch, encode_type='params')
@@ -253,11 +256,12 @@ class MetricComputation:
                 z_x = model.sample(mu_x, log_sigma_x)
             batch_rec = model.decode(z_y, z_x)
 
-            # compute/append/scale losses
-            kl_y.append(model.loss_kl(mu_y, log_sigma_y).numpy() * ratio)
-            kl_x.append(model.loss_kl(mu_x, log_sigma_x).numpy() * ratio)
-            rec.append(model.loss_rec(batch, batch_rec).numpy() * ratio)
-        return sum(kl_y)/len(kl_y), sum(kl_x)/len(kl_x), sum(rec)/len(rec)
+            # compute losses
+            kl_y[s:e] = model.loss_kl(mu_y, log_sigma_y, reduce=False).numpy()
+            kl_x[s:e] = model.loss_kl(mu_x, log_sigma_x, reduce=False).numpy()
+            rec[s:e] = model.loss_rec(batch, batch_rec, reduce=False).numpy()
+        print(len(np.where(kl_y == 0)))
+        return np.sum(kl_y)/n, np.sum(kl_x)/n, np.sum(rec)/n
 
     def acc(self, model: REPR, batch_size=1000):
         if not self.config['acc']:
@@ -380,8 +384,8 @@ if __name__ == '__main__':
                            num_chunk=5, num_eac=5)
 
     # test on vaece
-    vaece = VAECE.from_disk(os.path.join('..', 'pretrained', 'test', 'vaece-test'))
-    cd = CD_DVAE.from_disk(os.path.join('..', 'pretrained', 'test', 'cd-test'))
+    vaece = VAECE.from_disk(os.path.join('..', 'trained', 'vaece'))
+    cd = CD_DVAE.from_disk(os.path.join('..', 'trained', 'cd'))
     vaece.set_cd(cd)
     metric_out_1 = mc.compute_all(vaece)
     # save metric to disk

@@ -5,6 +5,7 @@ import numpy as np
 import random
 import util.visualization as vis
 
+
 class LineSegment:
     def __init__(self, x1, y1, x2, y2):
         self.x1, self.y1, self.x2, self.y2 = x1, y1, x2, y2
@@ -156,7 +157,6 @@ class VectorField:
 
     def contribution(self, x0, y0):
         vx, vy = 0, 0
-        num = len(self.points)
         for p in self.points:
             pvx, pvy = p.contribution(x0, y0)
             vx += pvx
@@ -215,23 +215,32 @@ class ShapeParser:
 
     rp = lambda _: np.random.uniform(0, 1)  # random position [0, 1]
     rw = lambda _: np.random.uniform(1, 2)  # random weight [1, 2]
-    rwv = lambda _: np.random.uniform(0.5, 2)  # random weight for vectors
+    rwv = lambda _: np.random.uniform(3, 6)  # random weight for vectors [1,2 before], set to 3,6]
     re = lambda _: np.random.randint(2, 4)  # random exponent [2, 4]
     rs = lambda _: np.random.uniform(0.001, 0.05)  # random stroke [0.001, 0.05]
     rnp = lambda _: np.random.randint(3, 6)  # 3-5 points
-    rd = lambda _: np.random.uniform(0.3, 0.6)  # random distortion amount
+    # rd = lambda _: np.random.uniform(0.3, 0.6)  # random distortion amount
+
+    def rd(self, min_d=0.3, dis_sd=0.8):
+        sample = abs(np.random.normal())
+        return sample * dis_sd + min_d
+
     ra = lambda _: np.random.normal(loc=0, scale=0.25) * (
                 2 * math.pi) / 20  # random rotation, [-18°, 18°] = [-2SD, 2SD]
 
     def __init__(self, w=32, h=32):
-        self.w = 32
-        self.h = 32
+        self.w = w
+        self.h = h
 
-    def get_random_modification(self, shape_normalize=None, default_points=False):
+    def get_random_modification(self, shape_normalize=None, default_points=True):
         vf = VectorField(default_points=default_points)
         n_v = self.rnp()
         for i in range(n_v):
-            vf.add_point(self.rp(), self.rp(), self.rv(), self.rv(), self.rwv())
+            dir = np.random.uniform(0, 2 * math.pi)
+            x = math.cos(dir)
+            y = math.sin(dir)
+
+            vf.add_point(self.rp(), self.rp(), x, y, self.rwv())
         distortion_amount = self.rd()
 
         # calculate normalization info to be shared between shapes
@@ -338,7 +347,3 @@ def lines_to_shape(lines, name=''):
             new_line = i > 0 and j == 0
             s.add_point(x, y, new_line=new_line)
     return s
-
-
-if __name__ == '__main__':
-    pass

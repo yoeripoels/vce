@@ -18,10 +18,9 @@ Gathering data for one epoch then works as follows:
 5. When done processing all chunks, epoch is done.
 
 Perhaps there's more efficient approaches to do this (e.g., multi-threaded, using built in PyTorch / TensorFlow
-functions), but this works and it's not the most important, so it's not part of the rewrite ;-)
+functions), but this works and it's not the most important ;-)
 """
 
-# TODO: Also, for converting pre-trained models from old codebase, ensure the prediction matches (fix dense layer)
 import numpy as np
 import math
 import glob
@@ -198,7 +197,6 @@ def get_data_disk(dir_base, dir_names, batch_size=128):
     data_generator = tf.data.Dataset.from_generator(batch_generator_list_disk,
                                                     args=args,
                                                     output_types=output_types)
-
     return data_generator, steps_per_epoch, batch_size
 
 
@@ -235,7 +233,6 @@ def get_data(data_list, batch_size=128):
 
 
 if __name__ == '__main__':
-
     # test for disk
     print('Testing disk generator!')
     generator, spe, batch_size = get_data_disk(os.path.join('synthetic', 'out'), ['x', 'y'])
