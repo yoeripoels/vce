@@ -214,9 +214,6 @@ class REPR(keras.Model, metaclass=ABCMeta):
         model.load(load_name, load_optimizer=load_optimizer)
         return model
 
-    '''
-    Training-related methods
-    '''
     @staticmethod
     def loss_kl(mu, log_sigma, reduce=True):
         kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.exp(2 * log_sigma) - 2 * log_sigma - 1, axis=1)
@@ -245,9 +242,6 @@ class REPR(keras.Model, metaclass=ABCMeta):
     def sample(mu, log_sigma):
         epsilon = tf.random.normal(shape=tf.shape(mu))
         return mu + K.exp(log_sigma) * epsilon
-    '''
-    SHARED EVALUATION METHODS HERE, using specified functions from above
-    '''
 
 
 class CD(keras.Model, metaclass=ABCMeta):

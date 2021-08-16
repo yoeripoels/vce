@@ -6,10 +6,6 @@ import os
 import data.synthetic.structure as structure
 from util.helper import random_pair
 
-'''
-Functions to generate CUDA-code input
-'''
-
 
 def generate_cuda_input_c(shape_input_line, num_samples, pair_offset=-1, pair_offset_rand=False, max_points=5):
     sp = structure.ShapeParser(w=32, h=32)

@@ -101,7 +101,6 @@ def _thinningIteration(im, iter_type):
 def thin_image(src):
     dst = src.copy() / 255
     prev = np.zeros(src.shape[:2], np.uint8)
-    diff = None
     while True:
         dst = _thinningIteration(dst, 0)
         dst = _thinningIteration(dst, 1)

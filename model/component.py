@@ -103,60 +103,6 @@ def Classifier(dim_z, num_class, num_dense=1, dense_dim=50, use_dropout=False):
     return Model(z_in, pred, name='classifier')
 
 
-def Encoder_CD(input_shape, latent_dim):
-    # input
-    x_in = Input(shape=input_shape, name='encoder_input')
-
-    # hidden layers
-    strides = (2, 2)
-    strides_small = (1, 1)
-    kernel_size = 4
-    l = Conv2D(filters=32, kernel_size=kernel_size, strides=strides, padding='same', name='1')(x_in)
-    l = LeakyReLU(l)
-    l = BatchNormalization()(l)
-    l = Conv2D(filters=128, kernel_size=kernel_size, strides=strides_small, padding='same', name='2')(l)
-    l = LeakyReLU(l)
-    l = BatchNormalization()(l)
-    l = Flatten(name='3')(l)
-
-    # latent space
-    mu = Dense(latent_dim, name='z_mean')(l)
-    log_sigma = Dense(latent_dim, name='z_log_sigma')(l)
-
-    return Model(x_in, [mu, log_sigma], name='encoder')
-
-
-def Decoder_CD(latent_dim, output_shape=None):
-    if output_shape:  # if output shape passed, compute inner dense dim
-        h, w, c_out = output_shape
-        assert h % 2 == 0 and w % 2 == 0  # as we apply (2,2) strides, we assume even resolution
-        h_in, w_in = h//2, w//2
-    else:
-        h_in, w_in = 16, 16
-        c_out = 1
-
-    # input
-    z_in = Input(shape=latent_dim, name='decoder_input')
-
-    # hidden layers
-    strides = (2, 2)
-    strides_small = (1, 1)
-    kernel_size = 4
-    l = Dense(h_in * w_in * 128, name='3')(z_in)
-    l = LeakyReLU(l)
-    l = Reshape((h_in, w_in, 128), name='3_b')(l)
-    l = BatchNormalization()(l)
-    l = Conv2DTranspose(filters=32, kernel_size=kernel_size, strides=strides_small, padding='same', name='2')(l)
-    l = LeakyReLU(l)
-    l = BatchNormalization()(l)
-
-    # reconstruction
-    x_out = Conv2DTranspose(filters=c_out, kernel_size=kernel_size, strides=strides, padding='same', activation='sigmoid',
-                            name='1')(l)
-
-    return Model(z_in, x_out, name='decoder')
-
-
 def Discriminator(input_shape):
     # input
     x_in = Input(shape=input_shape, name='discriminator_input')

@@ -3,8 +3,8 @@
 from model.base import CD
 from model.r_model import DVAE
 import tensorflow as tf
-from model.component import Classifier, Encoder_CD, Decoder_CD
-import tensorflow.keras as keras
+from model.component import Classifier
+
 
 class CD_DVAE(DVAE, CD):
     """Change discriminator model, built upon DVAE.

@@ -4,7 +4,7 @@ We augment MNIST such that we can split images into (some approximation of) line
 assume to be the underlying type of feature that determines the digit.
 
 This augmentation class can be used to generate inputs necessary for methods that assume some sort of
-'feature-difference' as supervision (VAE-CE and ADA-GVAE), as we can create such image-groups using these split digits.
+'concept-difference' as supervision (VAE-CE and ADA-GVAE), as we can create such image-groups using these split digits.
 """
 import data.mnist.augment as augment
 import data.data as data

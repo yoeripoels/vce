@@ -9,6 +9,7 @@ import pickle
 import argparse
 import json
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--create', type=int, default=0)

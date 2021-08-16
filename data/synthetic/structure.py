@@ -3,7 +3,6 @@
 import math
 import numpy as np
 import random
-import util.visualization as vis
 
 
 class LineSegment:

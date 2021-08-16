@@ -8,6 +8,7 @@ from data import data
 import os
 import argparse
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--type', type=str, default='dvae')
