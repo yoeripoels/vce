@@ -170,8 +170,8 @@ def compute_eac(data_explanation, lines, classes, pair, pair_modification, sp, m
         for i, c in enumerate(costs):
             eac[i].append(c)
         for i, s_e in enumerate(solution_expl):
-            solutions_expl.append(s_e)
+            solutions_expl[i].append(s_e)
         for i, s_m in enumerate(solution_map):
-            solutions_map.append(s_m)
+            solutions_map[i].append(s_m)
 
     return eac, solutions_expl, solutions_map

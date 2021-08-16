@@ -14,6 +14,7 @@ import os
 import pickle
 import math
 import sklearn.metrics
+import util.visualization as vis
 from sklearn.linear_model import LogisticRegression
 from explanation.evaluation import compute_eac
 
@@ -291,7 +292,7 @@ class MetricComputation:
         acc_x = lgs.score(z_x, y)
         return acc_y, acc_x
 
-    def eac(self, model: REPR, expl_type='all'):
+    def eac(self, model: REPR, expl_type='all', idx=None, visualize=False, visualize_fn=None):
         if not self.config['eac']:
             return False
         # parse what type of explanations we will generate / compare
@@ -305,8 +306,18 @@ class MetricComputation:
             raise ValueError('Explanation type not found')
 
         # generate the explanations
+        if idx is not None:
+            if isinstance(idx, int):
+                idx = [idx]
+            eac_pair = [self.eac_pair[i] for i in idx]
+            eac_pair_modification = [self.eac_pair_modification[i] for i in idx]
+        else:
+            eac_pair = self.eac_pair
+            eac_pair_modification = self.eac_pair_modification
+
+
         explanations = []
-        for (a, b), (mod_a, mod_b) in zip(self.eac_pair, self.eac_pair_modification):
+        for (a, b), (mod_a, mod_b) in zip(eac_pair, eac_pair_modification):
             candidates = []
             shape_a = structure.lines_to_shape([self.data_lines[i] for i in self.data_classes[a]])
             shape_b = structure.lines_to_shape([self.data_lines[i] for i in self.data_classes[b]])
@@ -325,7 +336,20 @@ class MetricComputation:
 
         # compute the eac based of these explanations
         eac, solutions_expl, solutions_map = compute_eac(explanations, self.data_lines, self.data_classes,
-                                                         self.eac_pair, self.eac_pair_modification, self.sp)
+                                                         eac_pair, eac_pair_modification, self.sp)
+
+        if visualize:
+            for i in range(len(explanations)):
+                for j, t in enumerate(expl_map):
+                    query = explanations[i][j]
+                    ground_truth = solutions_expl[j][i]
+                    mapping = solutions_map[j][i]
+                    explanation_cost = eac[j][i]
+                    if visualize_fn is not None:
+                        fn = visualize_fn + '_{}-{}.pdf'.format(t, i)
+                    else:
+                        fn = None
+                    vis.plot_solution(ground_truth, query, mapping, cost=explanation_cost, filename=fn)
 
         # average out the costs per type and return
         eac = np.array(eac)
