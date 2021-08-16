@@ -25,6 +25,8 @@ if __name__ == '__main__':
     verbose = args.verbose
     epochs = args.epoch
     save_dir = os.path.join('trained')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     data_path = os.path.join('data', 'synthetic', 'out')
     if args.type == 'dvae':
         dvae = DVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=2, w_class=10)

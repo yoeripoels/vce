@@ -21,6 +21,9 @@ if __name__ == '__main__':
     # initialize our data
     create_metric = args.create == 1
     model_dir = 'trained'
+    metric_dir = 'metrics'
+    if not os.path.exists(metric_dir):
+        os.makedirs(metric_dir)
     model_name = os.path.join(model_dir, args.load_name)
     cd_name = os.path.join(model_dir, args.cd_name)
     if create_metric:
@@ -38,7 +41,7 @@ if __name__ == '__main__':
                                num_chunk=5,
                                num_elbo=10000, num_mig=10000, num_acc=10000, num_lacc=10000, num_eac=90,
                                eac_nostyle_ratio=.5)
-        mc.save(os.path.join('metrics', args.metric_name))
+        mc.save(os.path.join(metric_dir, args.metric_name))
     else:
         mc = MetricComputation.from_disk(os.path.join('metrics', args.metric_name))
     metric_out = None

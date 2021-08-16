@@ -62,8 +62,9 @@ def augment_dataset(dataset, n=None, max_per_image=3, random_per_image=True):
 
 if __name__ == '__main__':
     # output dirs
-    augment_out_dir = os.path.join('tmp', 'augment_full')
-    output_dir = 'out'
+    path = os.path.dirname(os.path.realpath(__file__))
+    augment_out_dir = os.path.join(path, 'tmp', 'augment_full')
+    output_dir = os.path.join(path, 'out')
     for d in [augment_out_dir, output_dir]:
         if not os.path.exists(d):
             os.makedirs(d)

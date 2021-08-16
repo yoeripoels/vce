@@ -45,8 +45,9 @@ if __name__ == '__main__':
     #############################
     # CREATE LINE/SHAPE STRUCTURE
     #############################
-    output_dir = os.path.join('out')  # can change dir to out/test here
-    cuda_input_dir = os.path.join('tmp', 'cuda_process')
+    path = os.path.dirname(os.path.realpath(__file__))
+    output_dir = os.path.join(path, 'out')  # can change dir to out/test here
+    cuda_input_dir = os.path.join(path, 'tmp', 'cuda_process')
     for d in [output_dir, cuda_input_dir]:
         if not os.path.exists(d):
             os.makedirs(d)
