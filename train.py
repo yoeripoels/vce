@@ -51,7 +51,7 @@ if __name__ == '__main__':
         vaece.fit(generator, epochs=epochs, steps_per_epoch=spe, verbose=verbose)
         vaece.save(os.path.join(save_dir, save_name))
     elif args.type == 'gvae':
-        gvae = GVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=6)
+        gvae = GVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=6, w_full=2)
         generator, spe, batch_size = data.get_data_disk(data_path,
                                             ['x_fpair_a', 'x_fpair_b', 'y_fpair', 'x', 'y'])
         gvae.compile(batch_size=batch_size)
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         lvae.fit(generator, epochs=epochs, steps_per_epoch=spe, verbose=verbose)
         lvae.save(os.path.join(save_dir, save_name))
     elif args.type == 'adagvae':
-        ada_gvae = ADA_GVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=4)
+        ada_gvae = ADA_GVAE(input_shape=(32, 32, 1), dim_y=8, dim_x=8, w_kl_y=1, w_class=4, w_full=2)
         generator, spe, batch_size = data.get_data_disk(data_path,
                                             ['x_pos_pair_a', 'x_pos_pair_b', 'x', 'y'])
         ada_gvae.compile(batch_size=batch_size)
