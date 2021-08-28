@@ -1,5 +1,5 @@
 # Visual Contrastive Explanation
-This repository contains the code for the paper "VAE-CE: Visual Contrastive Explanation using Disentangled VAEs" [[arxiv]](). 
+This repository contains the code for the paper "VAE-CE: Visual Contrastive Explanation using Disentangled VAEs" [[arxiv]](https://arxiv.org/abs/2108.09159). 
 
 ### Installation
 Required packages are listed in `requirements.txt`. The code was developed/tested using Python 3.7.3.
@@ -30,6 +30,10 @@ The evaluation of all metrics is provided by MetricComputation in `testing/metri
 ---
 If you found our work useful in your research, please consider citing:
 ```
-@article{
+@article{poels2021vaece,
+  title={VAE-CE: Visual Contrastive Explanation using Disentangled VAEs},
+  author={Poels, Yoeri and Menkovski, Vlado},
+  journal={arXiv preprint arXiv:2108.09159},
+  year={2021}
 }
 ```
